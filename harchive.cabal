@@ -1,11 +1,12 @@
 name: harchive
-version: 0.2
+version: 0.2.1
 copyright: (C) 2007, David Brown
 license: GPL
 license-file: COPYING
 author: David Brown <harchive@davidb.org>
 maintainer: David Brown <harchive@davidb.org>
-build-depends: base, binary >= 0.2, network, zlib, unix, parsec
+build-depends: base, binary >= 0.2, network, zlib, unix, parsec,
+	bytestring
 category: System
 synopsis: Networked content addressed backup and restore software.
 description:
@@ -13,31 +14,37 @@ description:
   data to a content addressed storage pool.  Very preliminary version.
 homepage: http://www.davidb.org/darcs/harchive/
 
-executable: hfile
-main-is: FileServer.hs
+-- Initial experiementation with ldump compatability.
+executable: hcat
+main-is: HCat.hs
 hs-source-dirs: src
-extensions: ForeignFunctionInterface
-extra-libraries: ssl
--- ghc-options: -Wall -Werror
-ghc-options: -Wall -Werror -O2
-other-modules:
-  Hash
-  Protocol
-  Status
-  Devid
-  Attributes
+ghc-options: -Wall -Werror
 
-executable: hpool
-main-is: PoolServer.hs
-hs-source-dirs: src
-extensions: ForeignFunctionInterface
-extra-libraries: ssl sqlite3
--- ghc-options: -Wall -Werror
--- ghc-options: -Wall
-ghc-options: -Wall -Werror -O2
--- ld-options: -threaded
-other-modules:
-  Hash
-  Protocol
-  Sqlite3
-  Store
+-- executable: hfile
+-- main-is: FileServer.hs
+-- hs-source-dirs: src
+-- extensions: ForeignFunctionInterface
+-- extra-libraries: ssl
+-- -- ghc-options: -Wall -Werror
+-- ghc-options: -Wall -Werror -O2
+-- other-modules:
+--   Hash
+--   Protocol
+--   Status
+--   Devid
+--   Attributes
+-- 
+-- executable: hpool
+-- main-is: PoolServer.hs
+-- hs-source-dirs: src
+-- extensions: ForeignFunctionInterface
+-- extra-libraries: ssl sqlite3
+-- -- ghc-options: -Wall -Werror
+-- -- ghc-options: -Wall
+-- ghc-options: -Wall -Werror -O2
+-- -- ld-options: -threaded
+-- other-modules:
+--   Hash
+--   Protocol
+--   Sqlite3
+--   Store
