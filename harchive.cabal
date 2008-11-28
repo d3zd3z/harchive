@@ -13,12 +13,15 @@ description:
   Implements software to perform backups and restores of filesystem
   data to a content addressed storage pool.  Very preliminary version.
 homepage: http://www.davidb.org/darcs/harchive/
+build-type: Simple
 
 -- Initial experiementation with ldump compatability.
 executable: hcat
 main-is: HCat.hs
 hs-source-dirs: src
-ghc-options: -Wall -Werror
+ghc-options: -Wall
+other-modules:
+   HexDump
 
 -- executable: hfile
 -- main-is: FileServer.hs

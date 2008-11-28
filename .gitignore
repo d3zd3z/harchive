@@ -1,2 +1,4 @@
 _darcs
 dist
+.*.swp
+pool-data-*.data
