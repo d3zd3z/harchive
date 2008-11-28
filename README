@@ -1,0 +1,202 @@
+Harchive - File archival and retrieval, in Haskell.
+
+This program is a proof of concept for a file backup and retrieval
+system I am developing, which I'm calling 'Harchive'.  More below on
+this prototype and where I would like to take it.
+
+Right now, this will probably only work under Linux.
+
+So, how do I use it?
+
+1.  Build it.
+
+  I'm assuming that the user at this point is more interested in the
+  fact that this is a Haskell program than that it is software that
+  backs computers up.  It does do some things that I'm not aware of
+  any other freely available software doing, so I'd like to make this
+  into a usable system.
+
+  Harchive uses cabal, so something like this will probably work:
+
+    % runhaskell Setup.hs configure
+    % runhaskell Setup.hs build
+    % runhaskell Setup.hs install
+
+  there is a simple make file that will do the configure and build
+  parts.
+
+2.  Create a storage pool.
+
+  Make a directory somewhere you have enough room to store a
+  compressed copy of all of the data you want to back up.  Here I'll
+  assume that is on '/backup/pool'.
+
+    % sh ./mktables.sh /backup/pool
+
+  will setup an empty storage pool index.
+
+3.  Run the storge pool daemon.
+
+  In a window, run
+
+    % hpool serve /backup/pool
+
+4.  Back something up.
+
+  The backups don't write cross device boundaries.  I suggest not
+  being root until you trust this program a bit more :-), but I
+  believe it will not access anything outside of the specified
+  directory.
+
+    % hfile -v dump /path/to/dump
+
+  If you want to run the backup on a different machine than the pool,
+  you can specify a hostname for the pool.
+
+    % hfile -v -h serverhost dump /path/to/dump
+
+5.  Try restoring.
+
+  Unless you are very trusting, you should comment out the code that
+  says 'chown fullName uid gid', since it will fail if you are not
+  root.  Either way, make a directory somewhere with enough space to
+  restore.
+
+    % hfile catalog
+
+  This will give you a nice list of all backups (be patient).  The
+  large hex number is the 'id' of the backup.  Pick one, and restore
+  it:
+
+    % hfile restore longhashgoeshere /path/to/restore
+
+  The restore doesn't print anything.
+
+6.  See if it works.
+
+  Use some tool to determine if the directory was restored properly.
+
+======================================================================
+
+What's going on.
+
+There are numerous utilities on Linux for backing up and restoring
+data.  I haven't found any that I would consider great tools for
+backups.  An overview of some other tools:
+
+  - GNU tar.  It's been around a long time, and is quite stable (in
+    theory).  A lot of archives are in this format, but I'm not sure
+    how much it is used for backups.  It has support for incremental
+    backups but requires scripting to manage.  Also, seems to be
+    focused on archiving to something like tape.
+
+  - Dump/restore, or xfsdump/xfsrestore.  These are filesystem
+    specific backup utilities.  Some work well (xfsdump), and others
+    don't (dump).  Computers are fast enough now, that most of the
+    performance benefits to something like dump are not really needed,
+    and the unreliability of raw device backup of a live filesystem
+    aren't worth it.  xfsdump is fast, apparently correct, but does
+    only work with xfs.  Both only support a simplistic incremental
+    backup model, and want to write to consecutive files.
+
+  - Amanda.  Doesn't do the backup itself (uses dump or tar, and
+    possibly others), but manages tapes and scheduling.  The author
+    seems paranoid about tape drives rewinding themselves and won't
+    allow multiple backups to be put on a single tape.
+
+  - Bacula.  Very nice automation and scheduling.  If they ever get
+    around to the "Implement accurate restore" on the TODO list, it
+    might end up being quite useful.  Does basic incremental backups.
+
+  - Backuppc, rdiff-backup, possibly others.  Modelled after storage
+    to a cheap harddrive rather than tape.  These generally create
+    mirror filesystems and then use hardlinks or delta files to model
+    changes.  The hardlink stores work against the normal directory
+    optimizations in most filesystems, and the resultant filesystems
+    become very slow.  Also, having the whole tree expanded on the
+    target side is quite unweildy.  No easy way to move this to tape
+    or DVD/CD.
+
+  - Adump.  Probably not very much used, since I wrote it myself.
+    Uses a simple database instead of time changes to do better
+    incremental backups, also does some management itself.
+
+So, I want the best of all of these.  I've been bouncing around these
+ideas for several years.  This reached critical mass starting around
+end of Feb 2007, and resulted in this first version at the beginning
+of March 2007.  It is basically a little more than a week's worth of
+work.  It records the contents of a backup to files in a directory.
+In the future I hope to manage archiving this data to either tape or
+DVD/CD.
+
+The storage model is inspired by git, but modified to be more indented
+to work with reliable backups.  I also don't assume that I can read an
+entire file into memory.
+
+There are only a few low-level constructs in the storage pool.  One is
+a 'blob'.  A 'blob' represents a hunk of data (currently up to 256K),
+and is addressed by the sha1 hash of the string "blob" followed by the
+hunk itself.  One optimization here is that we don't need to store the
+same blob more than once, so if a file changes, or an unrelated 256K
+part of a file changes, the similar part won't take additional space.
+
+Files larger than 256K are described with one or more 'chunks'.  A
+chunks consists of a concatenation of sha1 hashes of either blobs or
+chunks.  This model allows an arbitrary tree depth (although it
+doesn't need to get very deep).  Ultimately, the contents of a file
+can be represented as the sha1-hash of either a blob or a chunk.
+
+Next is a "dir".  The dir consists of a mapping of filenames to
+attributes, where one of the attributes for regular files is the file
+or directory contents hash.  The directory itself is stored in the
+pool, and addressed by it's hash.
+
+Last is a "backup".  The backup is a simple record giving a timestamp,
+a host, a directory, and the hash of the root of that backup.  This
+allows an easy cataloging of backups.
+
+The pool consists merely of a linear serialization of these pieces of
+data.  Since they are in files, they can be accessed randomly, as
+needed.  A sqlite3 database keeps track of the mapping between hashes
+and locations within the pool.  The pool files are limited (currently)
+to 640MB to make it easier to archive them away.
+
+In addition to the pool, the database file also manages a cache of
+directories.  For each directory visited by the backup, a cache entry
+is written that lists all of the inodes present for regular files,
+along with their timestamps and hashes.  When revisiting this
+directory, if the inode hasn't changed, then the hash doesn't need to
+be recomputed on the file.  This allows something equivalent to an
+incremental backup without needing to keep track of what the previous
+backup was and levels and all of that.  Directories are not currently
+cached, and unchanged directories will simply result in the same hash,
+and not take additional space.
+
+----------------------------------------------------------------------
+
+Actually implementing this efficiently is a little tricky.  Because
+database queries can take some time (and might be on a different
+host), we keep track of pending requests, and try to order things such
+that we try to not have to spend time waiting for a reply.  My
+measurements indicate that this model works quite well, at least as
+long as the pool resides on a different physical disc than the data
+being backed up.
+
+Restore is single-threaded, so might slow down as the backup pool gets
+larger.  This hasn't been a problem, yet.
+
+----------------------------------------------------------------------
+
+My experience doing this in Haskell.  I wanted to try implementing
+something fairly non-traditional in Haskell--the kind of thing that
+people typically think it isn't good at.  I started with an earlier
+prototype implementation in C#, using Mono.  It was much more
+difficult structuring the problem in it's model, and I ended up
+abandoning that solution.  I was able to implement the current code
+(as of 0.1) in Haskell in about a week of evenings with the two
+surrounding weekends.
+
+Haskell is amazingly pleasant to write something like this in.  Large
+portions of this program do live in the IO Monad, so it might be
+harder to understand, and perhaps could be made a lot clearer and
+simpler.
