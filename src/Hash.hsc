@@ -1,3 +1,4 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
 ----------------------------------------------------------------------
 -- Hashing operators
 -- Copyright 2007, David Brown
@@ -34,7 +35,7 @@ module Hash (
    toByteString
 )where
 
-import Data.ByteString.Base (fromForeignPtr)
+import Data.ByteString.Internal (fromForeignPtr)
 import Control.Monad (forM_)
 import Foreign
 import Foreign.C
@@ -102,7 +103,7 @@ hashOf bstr =
       hashData <- mallocForeignPtrBytes hashLength
       withForeignPtr hashData $ \hashP -> do
          c_sha1Final hashP ctx
-      return $ Hash $ fromForeignPtr hashData hashLength
+      return $ Hash $ fromForeignPtr hashData 0 hashLength
 
 ----------------------------------------------------------------------
 -- Generate a nice hex representation of a byte string.  Not

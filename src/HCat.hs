@@ -24,9 +24,12 @@ import qualified Codec.Compression.Zlib as Zlib
 -- import qualified System.Console.GetOpt
 import qualified Database.HDBC as SQL
 import Database.HDBC.Sqlite3
-import HexDump
+import DecodeSexp
+import Codec.Binary.Base64 (decode)
 
 import HexDump
+
+import qualified Chunk()
 
 main :: IO ()
 main = do
@@ -53,6 +56,11 @@ dbInfo = do
 	       putStrLn $ "At " ++ show file ++ ", " ++ show offset
 	       chunk <- poolGetChunk file offset
 	       putStr . hexDump . chunkData $ chunk
+	       let bdata' = decodeSexp . chunkData $ chunk
+	       let bdata = either (error . show) id bdata'
+	       putStrLn . show $ bdata
+	       let bhash = lookupString "HASH" bdata >>= decode
+	       putStrLn . show $ (fmap B.pack $ bhash)
 	 putStrLn "-------------------------"
    mapM_ showem answer
    SQL.disconnect db

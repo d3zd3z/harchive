@@ -2,3 +2,6 @@ _darcs
 dist
 .*.swp
 pool-data-*.data
+*.hi
+*.o
+tests/qc
