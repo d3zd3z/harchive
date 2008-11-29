@@ -32,6 +32,7 @@
 module Sqlite3 (
    Connection,
    connect,
+   close,
    query, exec,
    withTransaction,
    lastRowId,
@@ -65,12 +66,24 @@ connect path =
    checkResult con res
    return con
 
+close :: Connection -> IO ()
+close con = do
+   status <- sqlite3_close con
+   when (status /= (#const SQLITE_OK)) $ do
+      fail $ "Sqlite3 error (unable to close)"
+
 -- The various types that can be passed in a parameters.
 data BoundParameter
    = BString String
    | BInt64 Int64
    | BByteString ByteString
    deriving (Eq, Show)
+
+class Bindable a where
+   bind :: a -> BoundParameter
+
+instance Integral a => Bindable a where
+   bind = BInt64 . fromIntegral
 
 bindParameter :: BoundParameter -> Connection -> Stmt -> Int -> IO ()
 bindParameter (BString parm) con statement index =
@@ -163,7 +176,7 @@ query con qtext parms state0 handler =
                (#const SQLITE_BLOB) -> do
                   pText <- sqlite3_column_blob statement index
                   len <- sqlite3_column_bytes statement index
-                  text <- B.copyCStringLen (pText, len)
+                  text <- B.packCStringLen (pText, len)
                   return $ BByteString text
                _ -> do error "Unknown column type"
             -- putStrLn $ "    value = " ++ show item
@@ -190,6 +203,7 @@ checkResultIs expected con res =
 type Sqlite3 = Ptr ()
 type Stmt = Ptr ()
 foreign import ccall "sqlite3.h" sqlite3_open :: CString -> (Ptr Sqlite3) -> IO Int
+foreign import ccall "sqlite3.h" sqlite3_close :: Sqlite3 -> IO Int
 foreign import ccall "sqlite3.h" sqlite3_errmsg :: Sqlite3 -> IO CString
 foreign import ccall "sqlite3.h" sqlite3_prepare :: Sqlite3 -> CString -> Int ->
    (Ptr Stmt) -> (Ptr CString) -> IO Int

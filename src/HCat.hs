@@ -3,7 +3,7 @@
 -- Copyright 2008, David Brown
 ----------------------------------------------------------------------
 
-module Main (main) where
+module Main where
 
 -- import Control.Monad (unless)
 import Data.Char (chr, ord)
@@ -21,6 +21,10 @@ import Data.Binary.Get
 import Data.Int
 import Data.Word
 import qualified Codec.Compression.Zlib as Zlib
+-- import qualified System.Console.GetOpt
+import qualified Database.HDBC as SQL
+import Database.HDBC.Sqlite3
+import HexDump
 
 import HexDump
 
@@ -28,9 +32,79 @@ main :: IO ()
 main = do
    args <- getArgs
    case args of
+      ("show":files) -> mapM_ showFile files
+      ["dbinfo"] -> dbInfo
+      _ -> do
+	 putStr $ "Usage: command args\n"
+
+----------------------------------------------------------------------
+dbInfo :: IO ()
+dbInfo = do
+   db <- connectSqlite3 "pool/pool-info.sqlite3"
+   putStr $ "Backups:\n"
+   stmt <- SQL.quickQuery' db "select hash from backups" []
+   let answer = map ((SQL.fromSql :: SQL.SqlValue -> B.ByteString) .  head) stmt
+   let showem hash = do
+	 putStr . hexDump . lazify $ hash
+	 location <- lookupHash db hash
+	 case location of
+	    Nothing -> putStrLn "Not present"
+	    Just (file, offset) -> do
+	       putStrLn $ "At " ++ show file ++ ", " ++ show offset
+	       chunk <- poolGetChunk file offset
+	       putStr . hexDump . chunkData $ chunk
+	 putStrLn "-------------------------"
+   mapM_ showem answer
+   SQL.disconnect db
+
+lookupHash :: SQL.IConnection conn => conn -> B.ByteString -> IO (Maybe (Int, Int))
+lookupHash conn hash = do
+   answer <- SQL.quickQuery' conn
+      ("select file, offset from hashes where hash = " ++
+      (blobToSql hash)) []
+   case answer of
+      [[file, offset]] ->
+	 return $ Just (SQL.fromSql file, SQL.fromSql offset)
+      [] -> return Nothing
+      _ -> fail "Multiple hash entries in database"
+
+-- Ugh.  Nobody seems to actually use blobs in databases, very
+-- strange.  To work around this, we can encode the blobs directly in
+-- the insert and queries.  The replies do seem to survive with nulls
+-- at least.
+blobToSql :: B.ByteString -> String
+blobToSql =
+   ("X'"++) . (++"'") . concat . map (padHex 2) . B.unpack
+
+----------------------------------------------------------------------
+
+{-
+main :: IO ()
+main = do
+   args <- getArgs
+   case args of
       [name] -> showFile name
       _ -> do
 	 putStr $ "Usage: hcat filename\n"
+-}
+
+poolPrefix, poolSuffix :: String
+poolPrefix = "pool/pool-data-"
+poolSuffix = ".data"
+
+poolFile :: Int -> String
+poolFile num =
+   poolPrefix ++ num4 ++ poolSuffix
+   where
+      num4 = replicate (4 - length digits) '0' ++ digits
+      digits = show num
+
+poolGetChunk :: Int -> Int -> IO Chunk
+poolGetChunk file offset = do
+   fd <- openBinaryFile (poolFile file) ReadMode
+   chunk <- readChunk fd (fromIntegral offset)
+   hClose fd
+   return chunk
 
 showFile :: String -> IO ()
 showFile path = do

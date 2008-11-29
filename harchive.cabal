@@ -6,7 +6,9 @@ license-file: COPYING
 author: David Brown <harchive@davidb.org>
 maintainer: David Brown <harchive@davidb.org>
 build-depends: base, binary >= 0.2, network, zlib, unix, parsec,
-	bytestring
+	bytestring,
+	HDBC >= 1.1.3,
+	HDBC-sqlite3 >= 1.1.3
 category: System
 synopsis: Networked content addressed backup and restore software.
 description:

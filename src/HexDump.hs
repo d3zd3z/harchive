@@ -2,9 +2,10 @@
 -- HexDumping utility.
 ----------------------------------------------------------------------
 
-module HexDump (hexDump) where
+module HexDump (hexDump, lazify, padHex) where
 
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString as B
 import Data.List (intercalate)
 import Data.Char (isPrint, isAscii, chr)
 import Numeric (showHex)
@@ -12,6 +13,10 @@ import Numeric (showHex)
 -- Convert a chunk of bytestring data into a "nice" hex representation.
 hexDump :: L.ByteString -> String
 hexDump = hexDump' 0
+
+-- Work with a strict ByteString
+lazify :: B.ByteString -> L.ByteString
+lazify x = L.fromChunks [x]
 
 hexDump' :: Integer -> L.ByteString -> String
 hexDump' addr d | L.length d == 0 && addr > 0 = ""
