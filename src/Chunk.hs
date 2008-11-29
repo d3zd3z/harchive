@@ -46,6 +46,7 @@ module Chunk (
 import qualified Data.ByteString.Lazy as L
 -- import qualified Data.ByteString as B
 import Data.Maybe (fromMaybe)
+import HexDump
 
 -- We use the non-raw compression format, even though it takes more
 -- space.  The raw version is not documented, so many language
@@ -115,3 +116,18 @@ tryCompress payload =
       then Nothing
       else Just zpayload
    where zpayload = Zlib.compressWith (Zlib.CompressionLevel 3) payload
+
+instance Show Chunk where
+   show chunk =
+      "Chunk \"" ++ chunkKind chunk ++ "\" " ++
+	 show (chunkLength chunk) ++
+	 " bytes\n" ++ init (terseChunkHex chunk)
+
+terseChunkHex :: Chunk -> String
+terseChunkHex chunk =
+   unlines header ++ trailer
+   where
+      linified = lines . hexDump $ chunkData chunk
+      (header, trailer) = case linified of
+	 (_:_:_:_:_:_) -> (take 4 linified, "....\n")
+	 x -> (x, "")
