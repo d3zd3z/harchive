@@ -6,6 +6,7 @@ module Chunk.IO (
    ChunkFile,
    openChunkFile,
    chunkRead, chunkRead_,
+   chunkWrite,
    chunkClose,
    chunkFlush,
    chunkFileSize
@@ -17,9 +18,11 @@ import Control.Concurrent.MVar
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import Data.Binary.Get
+import Data.Binary.Put
 import Control.Monad (unless, liftM)
 import Hash
 import Data.Bits ((.&.))
+import Data.Word
 
 newtype ChunkFile = ChunkFile (MVar ChunkState)
 
@@ -43,7 +46,7 @@ chunkFlush (ChunkFile cfs) = do
    withMVar cfs $ \state -> do
       cfFlush (handleState state)
 
--- Read a single chunk at the specified offset.  Returns the chunk,
+-- |Read a single chunk at the specified offset.  Returns the chunk,
 -- and a guess as to the offset of the next chunk.
 chunkRead :: ChunkFile -> Int -> IO (Chunk, Int)
 chunkRead (ChunkFile cfs) offset = do
@@ -52,9 +55,19 @@ chunkRead (ChunkFile cfs) offset = do
       chunkPos <- readChunk handle offset
       return $ (state { handleState = hstate' }, chunkPos)
 
--- Like ChunkRead, but only returns the chunk.
+-- |Like ChunkRead, but only returns the chunk.
 chunkRead_ :: ChunkFile -> Int -> IO Chunk
 chunkRead_ cfs = liftM fst . chunkRead cfs
+
+-- |Write a single chunk to the end of the file.  Returns the offset
+-- that the chunk was written to.
+chunkWrite :: ChunkFile -> Chunk -> IO Int
+chunkWrite (ChunkFile cfs) chunk = do
+   modifyMVar cfs $ \state -> do
+      (hstate', handle, pos) <- getWritable (csPath state) (handleState state)
+      len <- writeChunk handle chunk
+      let hstate'' = updatePos hstate' (pos + len)
+      return $ (state { handleState = hstate'' }, pos )
 
 -- This isn't ideal, since it requires write permission on the file,
 -- but since the write is needed to recover anyway, it's probably best
@@ -65,22 +78,19 @@ chunkFileSize (ChunkFile cfs) = do
       (hstate', _, pos) <- getWritable (csPath state) (handleState state)
       return $ (state { handleState = hstate' }, pos)
 
--- Write the chunk to the file, returning the offset it was written
--- to.
-{-
-chunkWrite :: ChunkFile -> Chunk -> IO Int
-chunkWrite (ChunkFile cfs) chunk = do
-   modifyMVar cfs $ \state -> do
-      (hstate', handle, pos) <- getWritable (csPath state) (handleState state)
-      writeChunk handle chunk
--}
-
+----------------------------------------------------------------------
 readChunk :: Handle -> Int -> IO (Chunk, Int)
 readChunk fd pos = do
    hSeek fd AbsoluteSeek (fromIntegral pos)
    rawHeader <- B.hGet fd 48
    (chunk, len) <- runGet (getPayload fd) $ L.fromChunks [rawHeader]
    return (chunk, pos + 48 + len + (padLen 16 len))
+
+writeChunk :: Handle -> Chunk -> IO Int
+writeChunk fd chunk = do
+   let item = runPut (putChunk chunk)
+   L.hPut fd item
+   return $ fromIntegral $ L.length item
 
 -- Compute the number of bytes needed to pad 'value' to a 'padding'
 -- boundary.  Formula from Hacker's Delight.
@@ -119,6 +129,21 @@ getPayload fd = do
 	       ioError . userError $ "Hash mismatch"
 	    return (chunk, fromIntegral clen)
       else return (ioError . userError $ "Invalid magic number")
+
+putChunk :: Chunk -> Put
+putChunk chunk = do
+   putByteString headerMagic
+   let zData = chunkZData chunk
+   let len = chunkLength chunk
+   let (uclen, payload) = case zData of
+	 Nothing -> (0xFFFFFFFF :: Word32, chunkData chunk)
+	 Just z -> (fromIntegral len, z)
+   putWord32le $ fromIntegral $ L.length payload
+   putWord32le $ uclen
+   putByteString $ B.pack $ (map $ fromIntegral . fromEnum) $ chunkKind chunk
+   putByteString $ toByteString $ chunkHash chunk
+   putLazyByteString payload
+   putByteString $ B.replicate (padLen 16 $ fromIntegral $ L.length payload) 0
 
 headerMagic :: B.ByteString
 headerMagic = B.pack $ (map $ fromIntegral . fromEnum) "adump-pool-v1.1\n"
@@ -168,3 +193,7 @@ cfClose hs = return hs
 cfFlush :: HandleState -> IO ()
 cfFlush (HWritable fd _) = hFlush fd
 cfFlush _ = return ()
+
+updatePos :: HandleState -> Int -> HandleState
+updatePos (HWritable fd _) newPos = HWritable fd newPos
+updatePos _ _ = error "Update position of non-writable file"
