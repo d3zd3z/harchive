@@ -36,6 +36,7 @@
 module Chunk (
    Chunk,
    chunkKind, chunkData, chunkZData, chunkLength, chunkHash,
+   chunkStoreEstimate,
 
    byteStringToChunk, byteStringToChunkH,
    zDataToChunk, zDataToChunkH,
@@ -107,6 +108,12 @@ stringToLazyByteString = L.pack . (map $ fromIntegral . fromEnum)
 
 kpHash :: String -> L.ByteString -> Hash
 kpHash kind payload = hashOf (stringToLazyByteString kind `L.append` payload)
+
+-- Give the compressed storage size.
+chunkStoreEstimate :: Chunk -> Int
+chunkStoreEstimate chunk =
+   maybe (chunkLength chunk) (fromIntegral . L.length) .
+      chunkZData $ chunk
 
 -- Try compressing the payload, returning Just the compressed data, or
 -- Nothing, if the compressed data is larger than the uncompressed.

@@ -6,8 +6,9 @@ module Main (main) where
 
 import System.Environment (getArgs)
 
--- import Chunk
+import Chunk
 import Chunk.IO
+import Status
 
 main :: IO ()
 main = do
@@ -25,8 +26,20 @@ usage = "Usage: harchive check file ...\n"
 runCheck :: FilePath -> IO ()
 runCheck path = do
    putStrLn $ "Checking: " ++ path
+   monitor <- start 1
+
    cfile <- openChunkFile path
-   (chunk, next) <- chunkRead cfile 0
-   putStrLn $ show chunk
-   putStrLn $ show next
+   size <- chunkFileSize cfile
+
+   let
+      process pos = do
+	 (chunk, next) <- chunkRead cfile pos
+	 addFile monitor 1
+	 addSavedData monitor (fromIntegral . chunkStoreEstimate $ chunk)
+	 if next < size
+	    then process next
+	    else return ()
+   process 0
+
    chunkClose cfile
+   stop monitor

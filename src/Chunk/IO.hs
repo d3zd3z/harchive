@@ -7,7 +7,8 @@ module Chunk.IO (
    openChunkFile,
    chunkRead, chunkRead_,
    chunkClose,
-   chunkFlush
+   chunkFlush,
+   chunkFileSize
 ) where
 
 import Chunk
@@ -54,6 +55,15 @@ chunkRead (ChunkFile cfs) offset = do
 -- Like ChunkRead, but only returns the chunk.
 chunkRead_ :: ChunkFile -> Int -> IO Chunk
 chunkRead_ cfs = liftM fst . chunkRead cfs
+
+-- This isn't ideal, since it requires write permission on the file,
+-- but since the write is needed to recover anyway, it's probably best
+-- to check before starting the recovery.
+chunkFileSize :: ChunkFile -> IO Int
+chunkFileSize (ChunkFile cfs) = do
+   modifyMVar cfs $ \state -> do
+      (hstate', _, pos) <- getWritable (csPath state) (handleState state)
+      return $ (state { handleState = hstate' }, pos)
 
 -- Write the chunk to the file, returning the offset it was written
 -- to.
