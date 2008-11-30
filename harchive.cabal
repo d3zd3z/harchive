@@ -31,9 +31,10 @@ library
    ghc-options: -Wall
    extra-libraries: ssl
    exposed-modules:
+      Hash
       HexDump
       Chunk
-      Hash
+      Chunk.IO
 
 -- Initial experiementation with ldump compatability.
 executable hcat
@@ -42,9 +43,21 @@ executable hcat
    ghc-options: -Wall
    extra-libraries: ssl
    Other-Modules:
+      Hash
       HexDump
       Chunk
+      Chunk.IO
+
+executable harchive
+   main-is: Harchive.hs
+   hs-source-dirs: src
+   ghc-options: -Wall
+   extra-libraries: ssl
+   Other-Modules:
       Hash
+      HexDump
+      Chunk
+      Chunk.IO
 
 -- executable: hfile
 -- main-is: FileServer.hs
