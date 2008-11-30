@@ -37,22 +37,28 @@ module Status (
    addDirectory, setPath
 ) where
 
+-- Note that all of the 'add' operations (as well as setPath) are
+-- strict in their data argument.  Without this, this module makes it
+-- fairly easy to create space leaks since the compute arguments are
+-- often computed from large data blocks, even though they are
+-- generally integers.
+
 import Data.Int
 import Control.Concurrent
 
 -- All of the counters we manage.
 data Status = Status {
-   sPath :: String,
-   sSkipped :: Int64,
-   sDuped :: Int64,
-   sSaved :: Int64,
-   sCompressed :: Int64,
-   sFiles :: Int64,
-   sSkippedFiles :: Int64,
-   sDirs :: Int64,
+   sPath :: !String,
+   sSkipped :: !Int64,
+   sDuped :: !Int64,
+   sSaved :: !Int64,
+   sCompressed :: !Int64,
+   sFiles :: !Int64,
+   sSkippedFiles :: !Int64,
+   sDirs :: !Int64,
 
    -- Have we just printed the information
-   sPrinted :: Bool
+   sPrinted :: !Bool
 }
 
 type State = MVar (Maybe Status)
@@ -185,7 +191,10 @@ withState state modifier = do
    status <- takeMVar state
    case status of
       Nothing -> putMVar state Nothing
-      Just st -> putMVar state $ Just (modifier st)
+      Just st -> do
+	 let st' = modifier st
+	 -- Force the new state.
+	 st' `seq` putMVar state $ Just st'
 
 initialStatus :: Status
 initialStatus = Status {
