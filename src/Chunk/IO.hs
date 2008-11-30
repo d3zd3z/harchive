@@ -40,19 +40,19 @@ chunkFlush (ChunkFile state) = do
    withMVar state $ \cs -> do
       cfFlush (handleState cs)
 
-chunkRead :: ChunkFile -> Int -> IO (Either String Chunk)
+chunkRead :: ChunkFile -> Int -> IO Chunk
 chunkRead (ChunkFile state) offset = do
    modifyMVar state $ \cs -> do
       (state', handle) <- getReadable (csPath cs) (handleState cs)
       chunk <- readChunk handle offset
       return $ (cs { handleState = state' }, chunk)
 
-readChunk :: Handle -> Int -> IO (Either String Chunk)
+readChunk :: Handle -> Int -> IO Chunk
 readChunk fd pos = do
    hSeek fd AbsoluteSeek (fromIntegral pos)
    rawHeader <- B.hGet fd 48
    let header = runGet getHeader $ L.fromChunks [rawHeader]
-   either (return . Left) getData header
+   either (\_ -> ioError . userError $ "Error reading chunk") getData header
    where
       getData header = do
 	 payload <- B.hGet fd (fromIntegral . hCLen $ header)
@@ -60,8 +60,8 @@ readChunk fd pos = do
 	 let uclen = hUCLen header
 	 let kind = hKind header
 	 if uclen == 0xFFFFFFFF
-	    then return . Right $ (byteStringToChunk kind lazyPayload)
-	    else return . Right $ (zDataToChunk kind lazyPayload (fromIntegral uclen))
+	    then return (byteStringToChunk kind lazyPayload)
+	    else return (zDataToChunk kind lazyPayload (fromIntegral uclen))
 
 ----------------------------------------------------------------------
 getHeader :: Get (Either String Header)
@@ -100,10 +100,12 @@ data ChunkFile = ChunkFile {
 -}
 
 -- Keeps track of the openness of file handles and such.
+-- The handle is either closed, opened for read, or opened for write
+-- (with the file pointer seeked to the end of the file).
 data HandleState
    = HClosed
    | HReadable Handle
-   | HWritable Handle
+   | HWritable Handle Int
 
 -- Get a readable Handle out of a HandleState, and return a new handle
 -- state.
@@ -112,13 +114,18 @@ getReadable path HClosed = do
    fd <- openBinaryFile path ReadMode
    return (HReadable fd, fd)
 getReadable _ hs@(HReadable fd) = return (hs, fd)
-getReadable _ hs@(HWritable fd) = return (hs, fd)
+getReadable path (HWritable fd _) = do
+   hClose fd
+   getReadable path HClosed
 
-getWritable :: FilePath -> HandleState -> IO (HandleState, Handle)
+getWritable :: FilePath -> HandleState -> IO (HandleState, Handle, Int)
 getWritable path HClosed = do
    fd <- openBinaryFile path ReadWriteMode
-   return (HWritable fd, fd)
-getWritable _ hs@(HWritable fd) = return (hs, fd)
+   hSeek fd SeekFromEnd 0
+   pos <- hTell fd
+   let pos' = fromIntegral pos
+   return (HWritable fd pos', fd, pos')
+getWritable _ hs@(HWritable fd pos) = return (hs, fd, pos)
 getWritable path (HReadable fd) = do
    hClose fd
    getWritable path HClosed
@@ -127,14 +134,18 @@ cfClose :: HandleState -> IO HandleState
 cfClose (HReadable fd) = do
    hClose fd
    return HClosed
-cfClose (HWritable fd) = do
+cfClose (HWritable fd _) = do
    hClose fd
    return HClosed
 cfClose hs = return hs
 
 cfFlush :: HandleState -> IO ()
-cfFlush (HWritable fd) = hFlush fd
+cfFlush (HWritable fd _) = hFlush fd
 cfFlush _ = return ()
+
+updatePos :: HandleState -> Int -> HandleState
+updatePos (HWritable fd _) newPos = HWritable fd newPos
+updatePos _ _ = error "Update position of non-write file"
 
 {-
 openChunkFile :: FilePath -> ChunkFile

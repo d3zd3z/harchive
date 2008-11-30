@@ -86,8 +86,6 @@ poolFile num =
 poolGetChunk :: Int -> Int -> IO Chunk
 poolGetChunk file offset = do
    cfile <- openChunkFile (poolFile file)
-   chunkE <- chunkRead cfile offset
+   chunk <- chunkRead cfile offset
    chunkClose cfile
-   case chunkE of
-      Left message -> error message
-      Right chunk -> return chunk
+   return chunk
