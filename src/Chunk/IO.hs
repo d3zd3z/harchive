@@ -98,7 +98,8 @@ getPayload fd = do
 	 let kind' = (map $ toEnum . fromIntegral) . B.unpack $ kind
 	 hash <- getBytes 20
 	 return $ do
-	    lazyPayload <- strictLazyGet fd (fromIntegral clen)
+	    payload <- B.hGet fd (fromIntegral clen)
+	    let lazyPayload = L.fromChunks [payload]
 	    let
 	       chunk = if uclen == 0xFFFFFFFF
 		  then byteStringToChunk kind' lazyPayload
@@ -108,21 +109,6 @@ getPayload fd = do
 	       ioError . userError $ "Hash mismatch"
 	    return (chunk, fromIntegral clen)
       else return (ioError . userError $ "Invalid magic number")
-
--- non-lazily read from the handle into a lazy bytestring, breaking it
--- into nice 64k chunks.
-strictLazyGet :: Handle -> Int -> IO L.ByteString
-strictLazyGet handle count = do
-   pieces <- readPieces count
-   return . L.fromChunks $ pieces
-   where
-      readPieces :: Int -> IO [B.ByteString]
-      readPieces 0 = return []
-      readPieces n = do
-	 let realN = n `min` 65536
-	 piece <- B.hGet handle realN
-	 rest <- readPieces (n - realN)
-	 return $ piece : rest
 
 headerMagic :: B.ByteString
 headerMagic = B.pack $ (map $ fromIntegral . fromEnum) "adump-pool-v1.1\n"
