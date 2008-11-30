@@ -30,13 +30,13 @@ module Hash (
    Hash(..),
    -- Instances Eq, Show, Binary
 
-   hashOf,
+   hashOf, hashOfIO,
    toHex, fromHex,
    toByteString
 )where
 
-import Data.ByteString.Internal (fromForeignPtr)
-import Control.Monad (forM_)
+import Data.ByteString.Internal (create, toForeignPtr)
+import Control.Monad (forM_, liftM)
 import Foreign
 import Foreign.C
 import qualified Data.ByteString as B
@@ -89,21 +89,34 @@ hashLength = (#const SHA_DIGEST_LENGTH)
 ----------------------------------------------------------------------
 -- Lazily construct a hash from a lazy bytestream of data.
 hashOf :: L.ByteString -> Hash
-hashOf bstr =
-   -- Not sure if this is safe or not.
-   -- inlinePerformIO $ do
-   unsafePerformIO $ do
-      allocaBytes (#size SHA_CTX) $ \ctx -> do
-      c_sha1Init ctx
-      forM_ (L.toChunks bstr) $ \bStr -> do
-         B.useAsCStringLen bStr $ \(bdata, blen) -> do
-         c_sha1Update ctx bdata blen
+hashOf bstr = unsafePerformIO $ hashOfIO bstr
 
-      -- Copy out the hash result.
-      hashData <- mallocForeignPtrBytes hashLength
-      withForeignPtr hashData $ \hashP -> do
-         c_sha1Final hashP ctx
-      return $ Hash $ fromForeignPtr hashData 0 hashLength
+hashOfIO :: L.ByteString -> IO Hash
+hashOfIO bstr = do
+   allocaBytes (#size SHA_CTX) $ \ctx -> do
+   c_sha1Init ctx
+   forM_ (L.toChunks bstr) $ \bStr -> do
+      -- B.useAsCStringLen bStr $ \(bdata, blen) -> do
+
+      unsafeUseAsCStringLen bStr $ \(bdata, blen) -> do
+	 c_sha1Update ctx bdata blen
+
+   -- Copy out the hash result.
+   liftM Hash $ create hashLength $ \p ->
+      c_sha1Final p ctx
+
+unsafeUseAsCString :: B.ByteString -> (CString -> IO a) -> IO a
+-- Non-copying version of useAsCStringLen.  Can only be used if
+-- the pointer is only read.
+unsafeUseAsCString bs action = do
+   let (fp, o, _) = toForeignPtr bs
+   withForeignPtr fp $ \p -> do
+      action (castPtr (p `plusPtr` o))
+
+unsafeUseAsCStringLen :: B.ByteString -> (CStringLen -> IO a) -> IO a
+unsafeUseAsCStringLen p f = do
+   let (_, _, l) = toForeignPtr p
+   unsafeUseAsCString p $ \cstr -> f (cstr, l)
 
 ----------------------------------------------------------------------
 -- Generate a nice hex representation of a byte string.  Not
