@@ -19,7 +19,7 @@ clean:
 	runhaskell Setup.hs clean
 
 .setup-config: Setup.hs harchive.cabal
-	runhaskell Setup.hs configure --ghc --user --prefix ~/cabal-code
+	runhaskell Setup.hs configure --ghc --user
 
 #hash: Hash.hs
 #	ghc --make -o hash Hash.hs
