@@ -158,7 +158,3 @@ cfClose hs = return hs
 cfFlush :: HandleState -> IO ()
 cfFlush (HWritable fd _) = hFlush fd
 cfFlush _ = return ()
-
-updatePos :: HandleState -> Int -> HandleState
-updatePos (HWritable fd _) newPos = HWritable fd newPos
-updatePos _ _ = error "Update position of non-write file"
