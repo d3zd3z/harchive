@@ -30,22 +30,22 @@ openChunkFile path = do
    return . ChunkFile $ cs
 
 chunkClose :: ChunkFile -> IO ()
-chunkClose (ChunkFile state) = do
-   modifyMVar_ state $ \cs -> do
-      state' <- cfClose (handleState cs)
-      return $ cs { handleState = state' }
+chunkClose (ChunkFile cfs) = do
+   modifyMVar_ cfs $ \state -> do
+      hstate' <- cfClose (handleState state)
+      return $ state { handleState = hstate' }
 
 chunkFlush :: ChunkFile -> IO ()
-chunkFlush (ChunkFile state) = do
-   withMVar state $ \cs -> do
-      cfFlush (handleState cs)
+chunkFlush (ChunkFile cfs) = do
+   withMVar cfs $ \state -> do
+      cfFlush (handleState state)
 
 chunkRead :: ChunkFile -> Int -> IO Chunk
-chunkRead (ChunkFile state) offset = do
-   modifyMVar state $ \cs -> do
-      (state', handle) <- getReadable (csPath cs) (handleState cs)
+chunkRead (ChunkFile cfs) offset = do
+   modifyMVar cfs $ \state -> do
+      (hstate', handle) <- getReadable (csPath state) (handleState state)
       chunk <- readChunk handle offset
-      return $ (cs { handleState = state' }, chunk)
+      return $ (state { handleState = hstate' }, chunk)
 
 readChunk :: Handle -> Int -> IO Chunk
 readChunk fd pos = do
