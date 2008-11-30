@@ -17,6 +17,8 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import Data.Binary.Get
 import Data.Word
+import Control.Monad (unless)
+import Hash
 
 newtype ChunkFile = ChunkFile (MVar ChunkState)
 
@@ -47,57 +49,59 @@ chunkRead (ChunkFile cfs) offset = do
       chunk <- readChunk handle offset
       return $ (state { handleState = hstate' }, chunk)
 
+-- Write the chunk to the file, returning the offset it was written
+-- to.
+{-
+chunkWrite :: ChunkFile -> Chunk -> IO Int
+chunkWrite (ChunkFile cfs) chunk = do
+   modifyMVar cfs $ \state -> do
+      (hstate', handle, pos) <- getWritable (csPath state) (handleState state)
+      writeChunk handle chunk
+-}
+
 readChunk :: Handle -> Int -> IO Chunk
 readChunk fd pos = do
    hSeek fd AbsoluteSeek (fromIntegral pos)
    rawHeader <- B.hGet fd 48
-   let header = runGet getHeader $ L.fromChunks [rawHeader]
-   either (\_ -> ioError . userError $ "Error reading chunk") getData header
-   where
-      getData header = do
-	 payload <- B.hGet fd (fromIntegral . hCLen $ header)
-	 let lazyPayload = L.fromChunks [payload]
-	 let uclen = hUCLen header
-	 let kind = hKind header
-	 if uclen == 0xFFFFFFFF
-	    then return (byteStringToChunk kind lazyPayload)
-	    else return (zDataToChunk kind lazyPayload (fromIntegral uclen))
+   runGet (getPayload fd) $ L.fromChunks [rawHeader]
 
 ----------------------------------------------------------------------
-getHeader :: Get (Either String Header)
-getHeader = do
+-- Returns a possible string, indicating an error, or Nothing if the
+-- header is fine.
+checkMagic :: Get Bool
+checkMagic = do
    magic <- getBytes 16
-   if magic /= headerMagic
-      then return $ Left "Invalid header magic"
-      else do
+   return $ magic == headerMagic
+
+-- Parse the rest of the header.  The resulting IO will return the
+-- full chunk.
+getPayload :: Handle -> Get (IO Chunk)
+getPayload fd = do
+   goodMagic <- checkMagic
+   if goodMagic
+      then do
 	 clen <- getWord32le
 	 uclen <- getWord32le
 	 kind <- getBytes 4
+	 let kind' = (map $ toEnum . fromIntegral) . B.unpack $ kind
 	 hash <- getBytes 20
-	 return . Right $ Header {
-	    hCLen = clen,
-	    hUCLen = uclen,
-	    hKind = (map $ toEnum . fromIntegral) . B.unpack $ kind,
-	    hHash = hash }
+	 return $ do
+	    payload <- B.hGet fd (fromIntegral clen)
+	    let lazyPayload = L.fromChunks [payload]
+	    let
+	       chunk = if uclen == 0xFFFFFFFF
+		  then byteStringToChunk kind' lazyPayload
+		  else zDataToChunk kind' lazyPayload (fromIntegral uclen)
+	    -- TODO: Make this check optional.
+	    unless (hash == (toByteString . chunkHash $ chunk)) $ do
+	       ioError . userError $ "Hash mismatch"
+	    return chunk
+      else return (ioError . userError $ "Invalid magic number")
 
 headerMagic :: B.ByteString
 headerMagic = B.pack $ (map $ fromIntegral . fromEnum) "adump-pool-v1.1\n"
 
-data Header = Header {
-   hCLen :: Word32,
-   hUCLen :: Word32,
-   hKind :: String,
-   hHash :: B.ByteString }
-   deriving (Eq, Show)
-
 ----------------------------------------------------------------------
-
-{-
-data ChunkFile = ChunkFile {
-   getReadable :: IO (Handle, ChunkFile),
-   getWritable :: IO (Handle, ChunkFile),
-   getClosed :: IO ChunkFile }
--}
 
 -- Keeps track of the openness of file handles and such.
 -- The handle is either closed, opened for read, or opened for write
@@ -146,12 +150,3 @@ cfFlush _ = return ()
 updatePos :: HandleState -> Int -> HandleState
 updatePos (HWritable fd _) newPos = HWritable fd newPos
 updatePos _ _ = error "Update position of non-write file"
-
-{-
-openChunkFile :: FilePath -> ChunkFile
-openChunkFile path = 
-   ChunkFile { getReadable = readable, getWritable writable,
-      getClosed = closed }
-   where
-      readable = do
--}
