@@ -27,8 +27,10 @@
 ----------------------------------------------------------------------
 
 module Status (
-   State,
-   start, stop,
+
+   statusToIO,
+   StatusIO,
+   liftIO,
 
    withIO,
 
@@ -36,6 +38,9 @@ module Status (
    addSkippedData,
    addDirectory, setPath
 ) where
+
+-- TODO: Make something for lifting console operations so that they
+-- don't print anything.
 
 -- Note that all of the 'add' operations (as well as setPath) are
 -- strict in their data argument.  Without this, this module makes it
@@ -45,6 +50,12 @@ module Status (
 
 import Data.Int
 import Control.Concurrent
+import Control.Monad.Reader
+
+-- Since the data is stored in an MVar, use a simple reader to access
+-- it.  A future effort will be to make a new type of monad for
+-- holding MVar-type state.
+type StatusIO a = ReaderT State IO a
 
 -- All of the counters we manage.
 data Status = Status {
@@ -62,6 +73,18 @@ data Status = Status {
 }
 
 type State = MVar (Maybe Status)
+
+-- Convert status to an IO
+statusToIO :: Int -> StatusIO a -> IO a
+statusToIO verbosity actions = do
+   env <- start verbosity
+   runReaderT run env
+   where
+      run = do
+	 answer <- actions
+	 state <- ask
+	 liftIO $ stop state
+	 return answer
 
 -- Start the progress meter, and return the state variable that is
 -- handed around to everyone.
@@ -158,43 +181,44 @@ commify = reverse . add . reverse
 ----------------------------------------------------------------------
 -- Various update entities.
 
-addSavedData :: State -> Int64 -> IO ()
-addSavedData st count =
-   withState st $ \state -> state { sSaved = sSaved state + count }
+addSavedData :: Int64 -> StatusIO ()
+addSavedData count =
+   withState $ \state -> state { sSaved = sSaved state + count }
 
-addSkippedData :: State -> Int64 -> IO ()
-addSkippedData st count =
-   withState st $ \state -> state { sSkipped = sSkipped state + count }
+addSkippedData :: Int64 -> StatusIO ()
+addSkippedData count =
+   withState $ \state -> state { sSkipped = sSkipped state + count }
 
-addDupedData :: State -> Int64 -> IO ()
-addDupedData st count =
-   withState st $ \state -> state { sDuped = sDuped state + count }
+addDupedData :: Int64 -> StatusIO ()
+addDupedData count =
+   withState $ \state -> state { sDuped = sDuped state + count }
 
-addFile :: State -> Int64 -> IO ()
-addFile st count =
-   withState st $ \state -> state { sFiles = sFiles state + count }
+addFile :: Int64 -> StatusIO ()
+addFile count =
+   withState $ \state -> state { sFiles = sFiles state + count }
 
-addSkippedFile :: State -> Int64 -> IO ()
-addSkippedFile st count =
-   withState st $ \state -> state { sSkippedFiles = sSkippedFiles state + count }
+addSkippedFile :: Int64 -> StatusIO ()
+addSkippedFile count =
+   withState $ \state -> state { sSkippedFiles = sSkippedFiles state + count }
 
-addDirectory :: State -> Int64 -> IO ()
-addDirectory st count =
-   withState st $ \state -> state { sDirs = sDirs state + count }
+addDirectory :: Int64 -> StatusIO ()
+addDirectory count =
+   withState $ \state -> state { sDirs = sDirs state + count }
 
-setPath :: State -> String -> IO ()
-setPath st path =
-   withState st $ \state -> state { sPath = path }
+setPath :: String -> StatusIO ()
+setPath path =
+   withState $ \state -> state { sPath = path }
 
-withState :: State -> (Status -> Status) -> IO ()
-withState state modifier = do
-   status <- takeMVar state
+withState :: (Status -> Status) -> StatusIO ()
+withState modifier = do
+   state <- ask
+   status <- liftIO $ takeMVar state
    case status of
-      Nothing -> putMVar state Nothing
+      Nothing -> liftIO $ putMVar state Nothing
       Just st -> do
 	 let st' = modifier st
 	 -- Force the new state.
-	 st' `seq` putMVar state $ Just st'
+	 st' `seq` liftIO $ putMVar state $ Just st'
 
 initialStatus :: Status
 initialStatus = Status {
