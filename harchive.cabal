@@ -5,7 +5,10 @@ license: GPL
 license-file: COPYING
 author: David Brown <harchive@davidb.org>
 maintainer: David Brown <harchive@davidb.org>
-build-depends: base, binary >= 0.2, network, zlib, unix, parsec,
+build-depends: base, binary >= 0.2, network, unix, parsec,
+	-- earlier versions of zlib work, but require a codechange (in
+	-- comments).
+	zlib >= 0.5,
 	bytestring,
 	HDBC >= 1.1.3,
 	HDBC-sqlite3 >= 1.1.3,

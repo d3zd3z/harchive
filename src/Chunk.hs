@@ -122,7 +122,15 @@ tryCompress payload =
    if L.length zpayload >= L.length payload
       then Nothing
       else Just zpayload
-   where zpayload = Zlib.compressWith (Zlib.CompressionLevel 3) payload
+   where
+      -- zlib >= 0.5.x.x version.
+      zpayload = Zlib.compressWith
+	 (Zlib.defaultCompressParams { Zlib.compressLevel = (Zlib.CompressionLevel 3) })
+	 payload
+      -- zlib < 0.5.x.x version.
+      {-
+      _ = Zlib.compressWith (Zlib.CompressionLevel 3) payload
+      -}
 
 instance Show Chunk where
    show chunk =
