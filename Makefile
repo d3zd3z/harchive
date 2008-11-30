@@ -6,7 +6,7 @@ all: .setup-config .force
 dist: .setup-config .force
 	runhaskell Setup.hs sdist
 
-install: .setup-config .force
+install: .setup-config all
 	runhaskell Setup.hs install
 
 register: .setup-config .force
