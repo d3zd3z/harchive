@@ -5,3 +5,5 @@ pool-data-*.data
 *.hi
 *.o
 tests/qc
+tags
+TAGS

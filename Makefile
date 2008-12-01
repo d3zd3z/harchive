@@ -21,6 +21,14 @@ clean:
 .setup-config: Setup.hs harchive.cabal
 	runhaskell Setup.hs configure --ghc --user
 
+tags TAGS: .force
+	rm -f tags TAGS
+	find . -path './_darcs' -prune -o \
+		'(' '(' -name '*.hs' -o -name '*.lhs' ')' -print ')' | \
+		xargs hasktags
+	env LC_ALL=C sort tags > tags_
+	mv tags_ tags
+
 #hash: Hash.hs
 #	ghc --make -o hash Hash.hs
 #
