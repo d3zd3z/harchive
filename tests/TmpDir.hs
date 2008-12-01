@@ -7,7 +7,8 @@ module TmpDir (
    withTmpDir
 ) where
 
-import Control.Exception
+import Control.Exception (finally)
+import System.IO.Error
 import Data.Array
 import System.Directory
 import System.Posix hiding (createDirectory)
@@ -32,7 +33,7 @@ tryDir :: StdGen -> IO String
 tryDir gen = do
    let (gen', name) = makeName gen
    status <- try $ createDirectory name
-   either (\_ -> tryDir gen') (\_ -> return name) status
+   either (const $ tryDir gen') (const $ return name) status
 
 makeName :: StdGen -> (StdGen, String)
 makeName gen =
