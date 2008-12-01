@@ -30,9 +30,8 @@ module Status (
 
    statusToIO,
    StatusIO,
-   liftIO,
 
-   withIO,
+   liftIO,
 
    addDupedData, addSavedData, addFile, addSkippedFile,
    addSkippedData,
@@ -51,11 +50,43 @@ module Status (
 import Data.Int
 import Control.Concurrent
 import Control.Monad.Reader
+import Control.Monad.State.Strict hiding (State, withState)
 
--- Since the data is stored in an MVar, use a simple reader to access
--- it.  A future effort will be to make a new type of monad for
--- holding MVar-type state.
-type StatusIO a = ReaderT State IO a
+-- "Outer" monad, holding the MVar containing the atomic state.
+type StatusIO a = ReaderT (MVar InternalState) IO a
+
+-- Monad representing IO operations that can happen atomically,
+-- possibly modifying the state.
+type AtomicOp a = StateT InternalState IO a
+
+type InternalState = Maybe Status
+
+-- Perform the AtomicOp with the state taken from the MVar.  The
+-- resultant state will be put back into the MVar.
+atomically :: AtomicOp a -> StatusIO a
+atomically action = do
+   box <- ask
+   return undefined
+   liftIO $ modifyMVar box $ run
+   where
+      run s = do
+	 (x, s') <- runStateT action s
+	 return (s', x)
+
+statusToIO :: Int -> StatusIO a -> IO a
+statusToIO verbosity actions = do
+   env <- start verbosity
+   runReaderT run env
+   where
+      run = do
+	 answer <- actions
+	 atomically $ do
+	    state <- get
+	    case state of
+	       Nothing -> return ()
+	       Just st -> liftIO $ showStatus st
+	    put Nothing
+	    return answer
 
 -- All of the counters we manage.
 data Status = Status {
@@ -72,19 +103,7 @@ data Status = Status {
    sPrinted :: !Bool
 }
 
-type State = MVar (Maybe Status)
-
--- Convert status to an IO
-statusToIO :: Int -> StatusIO a -> IO a
-statusToIO verbosity actions = do
-   env <- start verbosity
-   runReaderT run env
-   where
-      run = do
-	 answer <- actions
-	 state <- ask
-	 liftIO $ stop state
-	 return answer
+----------------------------------------------------------------------
 
 -- Start the progress meter, and return the state variable that is
 -- handed around to everyone.
@@ -92,7 +111,7 @@ statusToIO verbosity actions = do
 --   0 - Don't print anything.
 --   1 - Print basic counts each second
 
-start :: Int -> IO State
+start :: Int -> IO (MVar InternalState)
 start verbosity =
    case verbosity of
       0 -> newMVar Nothing
@@ -112,14 +131,6 @@ start verbosity =
                let newSt = if sPrinted st then status else Just $ st { sPrinted = True }
                putMVar state newSt
                printer state
-
-stop :: State -> IO ()
-stop state = do
-   status <- takeMVar state
-   case status of
-      Nothing -> return ()
-      Just st -> do showStatus st
-   putMVar state Nothing
 
 showStatus :: Status -> IO ()
 showStatus status = do
@@ -146,6 +157,7 @@ clearStatus status | (sPrinted status) = putStr "\27[4A\27[0J"
 -- status information.  Used to wrap around things that are going to
 -- print messages so that they don't get stepped on by the status
 -- message.
+{-
 withIO :: State -> IO a -> IO a
 withIO state op = do
    status <- takeMVar state
@@ -159,6 +171,7 @@ withIO state op = do
          result <- op
          putMVar state $ Just (st { sPrinted = False })
          return result
+-}
 
 -- Show a number nicely.
 showNum :: (Num a) => Int -> a -> String
@@ -209,16 +222,18 @@ setPath :: String -> StatusIO ()
 setPath path =
    withState $ \state -> state { sPath = path }
 
+-- Update state atomically and conveniently.
 withState :: (Status -> Status) -> StatusIO ()
 withState modifier = do
-   state <- ask
-   status <- liftIO $ takeMVar state
+   atomically $ do
+   status <- get
    case status of
-      Nothing -> liftIO $ putMVar state Nothing
+      Nothing -> return ()
       Just st -> do
 	 let st' = modifier st
-	 -- Force the new state.
-	 st' `seq` liftIO $ putMVar state $ Just st'
+	 -- Force the new state.  Not sure if this is necessary, since
+	 -- we're using a strict state monad.
+	 st' `seq` put $ Just st'
 
 initialStatus :: Status
 initialStatus = Status {
