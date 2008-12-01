@@ -26,13 +26,17 @@
 --
 ----------------------------------------------------------------------
 
+-- TODO: Make a Hashable class so that hash can operate on
+-- multiple types.
+
 module Hash (
    Hash(..),
    -- Instances Eq, Show, Binary
 
    hashOf, hashOfIO,
    toHex, fromHex,
-   toByteString
+   toByteString,
+   byteStringToHash
 )where
 
 import Data.ByteString.Internal (create, toForeignPtr)
@@ -64,6 +68,10 @@ instance Show Hash where
 
 toByteString :: Hash -> B.ByteString
 toByteString (Hash h) = h
+
+byteStringToHash :: B.ByteString -> Hash
+byteStringToHash h | B.length h == fromIntegral hashLength = Hash h
+byteStringToHash _ = error "Invalid hash length"
 
 toHex :: Hash -> String
 toHex (Hash h) = hexify h
