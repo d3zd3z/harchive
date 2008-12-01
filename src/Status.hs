@@ -26,20 +26,24 @@
 --
 ----------------------------------------------------------------------
 
+-- TODO: Coordinate better with status update so that we can update
+-- immediately after printing a message.
+
 module Status (
 
    statusToIO,
    StatusIO,
 
+   startStatus,
+   stopStatus,
+
    liftIO,
+   cleanLiftIO,
 
    addDupedData, addSavedData, addFile, addSkippedFile,
    addSkippedData,
    addDirectory, setPath
 ) where
-
--- TODO: Make something for lifting console operations so that they
--- don't print anything.
 
 -- Note that all of the 'add' operations (as well as setPath) are
 -- strict in their data argument.  Without this, this module makes it
@@ -75,18 +79,14 @@ atomically action = do
 
 statusToIO :: Int -> StatusIO a -> IO a
 statusToIO verbosity actions = do
-   env <- start verbosity
-   runReaderT run env
+   box <- newMVar Nothing
+   runReaderT run box
    where
       run = do
+	 when (verbosity > 0) startStatus
 	 answer <- actions
-	 atomically $ do
-	    state <- get
-	    case state of
-	       Nothing -> return ()
-	       Just st -> liftIO $ showStatus st
-	    put Nothing
-	    return answer
+	 stopStatus
+	 return answer
 
 -- All of the counters we manage.
 data Status = Status {
@@ -105,32 +105,42 @@ data Status = Status {
 
 ----------------------------------------------------------------------
 
--- Start the progress meter, and return the state variable that is
--- handed around to everyone.
--- Verbosity levels:
---   0 - Don't print anything.
---   1 - Print basic counts each second
+-- Start the status monitor running (if not already).
+startStatus :: StatusIO ()
+startStatus = do
+   mvar <- ask   -- Needed for forkIO below.
+   atomically $ do
+      state <- get
+      case state of
+	 Just _ -> return ()
+	 Nothing -> do
+	    put $ Just initialStatus
+	    liftIO $ forkIO $ runReaderT printThread mvar
+	    return ()
 
-start :: Int -> IO (MVar InternalState)
-start verbosity =
-   case verbosity of
-      0 -> newMVar Nothing
-      1 -> do
-         state <- newMVar $ Just initialStatus
-         forkIO $ printer state
-         return state
-      _ -> error "Too much verbosity"
-   where
-      printer state = do
-         threadDelay 1000000  -- Apparently this doesn't work on many platforms.
-         status <- takeMVar state
-         case status of
-            Nothing -> putMVar state Nothing
-            Just st -> do
-               showStatus st
-               let newSt = if sPrinted st then status else Just $ st { sPrinted = True }
-               putMVar state newSt
-               printer state
+printThread :: StatusIO ()
+printThread = do
+   liftIO $ threadDelay 1000000   -- Portability concerns.
+   more <- atomically $ do
+      state <- get
+      case state of
+	 Nothing -> return False
+	 Just st -> do
+	    liftIO $ showStatus st
+	    unless (sPrinted st) $ do
+	       put $ Just $ st { sPrinted = True }
+	    -- Recurse.
+	    return True
+   when more printThread
+
+stopStatus :: StatusIO ()
+stopStatus = do
+   atomically $ do
+      state <- get
+      case state of
+	 Nothing -> return ()
+	 Just st -> liftIO $ showStatus st
+      put Nothing
 
 showStatus :: Status -> IO ()
 showStatus status = do
@@ -153,25 +163,21 @@ clearStatus :: Status -> IO ()
 clearStatus status | (sPrinted status) = putStr "\27[4A\27[0J"
                    | otherwise = return ()
 
--- Clear the status information, perform some IO, and then redraw the
--- status information.  Used to wrap around things that are going to
--- print messages so that they don't get stepped on by the status
--- message.
-{-
-withIO :: State -> IO a -> IO a
-withIO state op = do
-   status <- takeMVar state
-   case status of
-      Nothing -> do
-         result <- op
-         putMVar state Nothing
-         return result
-      Just st -> do
-         clearStatus st
-         result <- op
-         putMVar state $ Just (st { sPrinted = False })
-         return result
--}
+-- Lift the IO operation into the StatusIO in such a way that the
+-- progress meter will be cleared, and redrawn afterward.  Important
+-- when lifting any IO that prints messages.
+cleanLiftIO :: IO a -> StatusIO a
+cleanLiftIO op = do
+   atomically $ do
+      state <- get
+      case state of
+	 Nothing -> liftIO op
+	 Just st -> do
+	    liftIO $ clearStatus st
+	    result <- liftIO op
+	    liftIO $ showStatus (st { sPrinted = False })
+	    put $ Just $ st { sPrinted = True }
+	    return result
 
 -- Show a number nicely.
 showNum :: (Num a) => Int -> a -> String

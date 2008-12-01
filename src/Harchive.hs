@@ -14,7 +14,9 @@ main :: IO ()
 main = do
    args <- getArgs
    case args of
-      ("check":files@(_:_)) -> mapM_ (statusToIO 1 . runCheck) files
+      ("check":files@(_:_)) ->
+	 statusToIO 1 $ mapM_ runCheck files
+	 -- mapM_ (statusToIO 1 . runCheck) files
       _ ->
 	 ioError (userError usage)
 
@@ -25,7 +27,7 @@ usage = "Usage: harchive check file ...\n"
 
 runCheck :: FilePath -> StatusIO ()
 runCheck path = do
-   liftIO $ putStrLn $ "Checking: " ++ path
+   cleanLiftIO $ putStrLn $ "Checking: " ++ path
 
    cfile <- liftIO $ openChunkFile path
    size <- liftIO $ chunkFileSize cfile
