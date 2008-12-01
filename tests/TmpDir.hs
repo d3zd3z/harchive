@@ -19,7 +19,8 @@ makeTmpDir :: IO String
 makeTmpDir = do
    pid <- getProcessID
    let gen = mkStdGen $ fromIntegral pid
-   tryDir gen
+   let names = map makeName $ groupAt 10 $ randomLetters gen
+   tryDir names
 
 -- |Evalute 'action' with a newly created temp dir, which will be
 -- removed once action completes.
@@ -29,29 +30,23 @@ withTmpDir action = do
    finally (action name) (removeDirectoryRecursive name)
 
 -- Repeately try new names until we find one that works.
-tryDir :: StdGen -> IO String
-tryDir gen = do
-   let (gen', name) = makeName gen
-   status <- try $ createDirectory name
-   either (const $ tryDir gen') (const $ return name) status
+tryDir :: [FilePath] -> IO FilePath
+tryDir [] = undefined
+tryDir (x:xs) = do
+   status <- try $ createDirectory x
+   either (const $ tryDir xs) (const $ return x) status
 
-makeName :: StdGen -> (StdGen, String)
-makeName gen =
-   (gen', "/tmp/test-" ++ text)
-   where
-      (gen', text) = buildState randomLetter gen 10
+makeName :: String -> FilePath
+makeName = ("/tmp/test-" ++)
 
-buildState :: (a -> (a, b)) -> a -> Int -> (a, [b])
-buildState _ st 0 = (st, [])
-buildState gen st n =
-   (stLast, x:xs)
-   where
-      (stNext, x) = gen st
-      (stLast, xs) = buildState gen stNext (n-1)
+groupAt :: Int -> [a] -> [[a]]
+groupAt _ [] = []
+groupAt n ary = pre : groupAt n post
+   where (pre, post) = splitAt n ary
 
-randomLetter :: StdGen -> (StdGen, Char)
-randomLetter gen =
-   (gen', letters ! idx)
+randomLetters :: StdGen -> String
+randomLetters gen =
+   (letters ! idx) : randomLetters gen'
    where
       (idx, gen') = randomR (bounds letters) gen
 

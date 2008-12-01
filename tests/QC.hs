@@ -15,7 +15,7 @@ import Test.HUnit
 import qualified Data.ByteString.Lazy as L
 
 import Control.Monad (when)
-import System.Cmd
+-- import System.Cmd
 import System.Exit
 import GenWords
 
@@ -23,8 +23,8 @@ main = do
    -- putStrLn $ show c3
    -- putStrLn . Hash.toHex . chunkHash $ c3
    -- putStrLn . showZData $ c3
-   counts <- runTestTT tests
-   when ((errors counts, failures counts) /= (0, 0)) $
+   total <- runTestTT tests
+   when ((errors total, failures total) /= (0, 0)) $
       exitWith (ExitFailure 1)
 
 tests = test [
@@ -93,7 +93,7 @@ showZData chunk =
 makeLBSPayload :: Int -> Int -> L.ByteString
 makeLBSPayload num = L.pack . (map $ fromIntegral . fromEnum) . makePayload num
 makePayload :: Int -> Int -> String
-makePayload num length =
-   take length (prefix ++ makeWords num)
+makePayload num len =
+   take len (prefix ++ makeWords num)
    where
       prefix = show num ++ " "
