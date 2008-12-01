@@ -9,6 +9,7 @@ import System.Environment (getArgs)
 import Chunk
 import Chunk.IO
 import Status
+import Pool
 
 main :: IO ()
 main = do
@@ -17,6 +18,7 @@ main = do
       ("check":files@(_:_)) ->
 	 statusToIO 1 $ mapM_ runCheck files
 	 -- mapM_ (statusToIO 1 . runCheck) files
+      ["pool", path] -> runPool path $ return ()
       _ ->
 	 ioError (userError usage)
 
