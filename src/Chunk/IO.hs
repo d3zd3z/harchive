@@ -69,14 +69,14 @@ chunkWrite (ChunkFile cfs) chunk = do
       let hstate'' = updatePos hstate' (pos + len)
       return $ (state { handleState = hstate'' }, pos )
 
--- This isn't ideal, since it requires write permission on the file,
--- but since the write is needed to recover anyway, it's probably best
--- to check before starting the recovery.
 chunkFileSize :: ChunkFile -> IO Int
+-- |Determine the size of the file.  The file is closed at the end.
 chunkFileSize (ChunkFile cfs) = do
    modifyMVar cfs $ \state -> do
-      (hstate', _, pos) <- getWritable (csPath state) (handleState state)
-      return $ (state { handleState = hstate' }, pos)
+      (hstate', handle) <- getReadable (csPath state) (handleState state)
+      size <- hFileSize handle
+      hstate'' <- cfClose hstate'
+      return $ (state { handleState = hstate'' }, fromIntegral size)
 
 ----------------------------------------------------------------------
 readChunk :: Handle -> Int -> IO (Chunk, Int)
