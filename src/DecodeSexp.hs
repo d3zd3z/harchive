@@ -9,7 +9,7 @@
 
 module DecodeSexp (
    decodeSexp,
-   SexpValue(..),
+   Sexp, SexpValue(..),
    svString, svInteger,
    lookupString, lookupInteger
 ) where
@@ -18,20 +18,20 @@ import Text.ParserCombinators.Parsec
 import qualified Data.ByteString.Lazy as L
 import Numeric (readDec)
 
-decodeSexp :: L.ByteString -> Either ParseError Mapping
+decodeSexp :: L.ByteString -> Either ParseError Sexp
 decodeSexp = parse sexp "data" . asString
 
-type Mapping = [(String, SexpValue)]
+type Sexp = [(String, SexpValue)]
 
 -- Lookups of expected values.  Causes an error if the item is
 -- present, but of the wrong type.
-lookupString :: String -> Mapping -> Maybe String
+lookupString :: String -> Sexp -> Maybe String
 lookupString str = fmap svString . lookup str
 
-lookupInteger :: String -> Mapping -> Maybe Integer
+lookupInteger :: String -> Sexp -> Maybe Integer
 lookupInteger str = fmap svInteger . lookup str
 
-sexp :: Parser Mapping
+sexp :: Parser Sexp
 sexp = do
    char '('
    sets <- many $ do
