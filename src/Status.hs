@@ -51,36 +51,25 @@ module Status (
 -- often computed from large data blocks, even though they are
 -- generally integers.
 
+import MBox
+
 import Data.Int
 import Control.Concurrent
 import Control.Monad.Reader
-import Control.Monad.State.Strict hiding (State, withState)
 
 -- "Outer" monad, holding the MVar containing the atomic state.
-type StatusIO a = ReaderT (MVar InternalState) IO a
+type StatusIO a = MBox InternalState a
 
 -- Monad representing IO operations that can happen atomically,
 -- possibly modifying the state.
-type AtomicOp a = StateT InternalState IO a
+-- Not declared, since the type doesn't seem to be used yet.
+-- type AtomicStatusOp a = AtomicOp InternalState a
 
 type InternalState = Maybe Status
 
--- Perform the AtomicOp with the state taken from the MVar.  The
--- resultant state will be put back into the MVar.
-atomically :: AtomicOp a -> StatusIO a
-atomically action = do
-   box <- ask
-   return undefined
-   liftIO $ modifyMVar box $ run
-   where
-      run s = do
-	 (x, s') <- runStateT action s
-	 return (s', x)
-
 statusToIO :: Int -> StatusIO a -> IO a
 statusToIO verbosity actions = do
-   box <- newMVar Nothing
-   runReaderT run box
+   runMBox run Nothing
    where
       run = do
 	 when (verbosity > 0) startStatus
@@ -109,7 +98,7 @@ data Status = Status {
 startStatus :: StatusIO ()
 startStatus = do
    mvar <- ask   -- Needed for forkIO below.
-   atomically $ do
+   atomicLift $ do
       state <- get
       case state of
 	 Just _ -> return ()
@@ -121,7 +110,7 @@ startStatus = do
 printThread :: StatusIO ()
 printThread = do
    liftIO $ threadDelay 1000000   -- Portability concerns.
-   more <- atomically $ do
+   more <- atomicLift $ do
       state <- get
       case state of
 	 Nothing -> return False
@@ -135,7 +124,7 @@ printThread = do
 
 stopStatus :: StatusIO ()
 stopStatus = do
-   atomically $ do
+   atomicLift $ do
       state <- get
       case state of
 	 Nothing -> return ()
@@ -168,7 +157,7 @@ clearStatus status | (sPrinted status) = putStr "\27[4A\27[0J"
 -- when lifting any IO that prints messages.
 cleanLiftIO :: IO a -> StatusIO a
 cleanLiftIO op = do
-   atomically $ do
+   atomicLift $ do
       state <- get
       case state of
 	 Nothing -> liftIO op
@@ -231,7 +220,7 @@ setPath path =
 -- Update state atomically and conveniently.
 withState :: (Status -> Status) -> StatusIO ()
 withState modifier = do
-   atomically $ do
+   atomicLift $ do
    status <- get
    case status of
       Nothing -> return ()
