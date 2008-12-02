@@ -4,7 +4,7 @@
 ----------------------------------------------------------------------
 
 module Pool (
-   StoragePool,
+   PoolOp,
    runPool,
 
    -- * Operations on the pool.
@@ -37,8 +37,8 @@ import Control.Exception (bracket)
 import Control.Monad
 import Data.List (intercalate)
 
-type StoragePool a = MBox PoolState a
-type PoolOp a = AtomicOp PoolState a
+type PoolOp a = MBox PoolState a
+type AtomicPoolOp a = AtomicOp PoolState a
 
 -- The storage pool contains a directory of chunk files, and an SQLite
 -- database.
@@ -52,7 +52,7 @@ data PoolState = PoolState {
    chunkFiles :: IntMap ChunkFile }
 
 -- |Perform the given actions on the pool at the specified path.
-runPool :: FilePath -> StoragePool a -> IO a
+runPool :: FilePath -> PoolOp a -> IO a
 runPool path actions = do
    -- TODO: Verify the pool path.
    validatePath path
@@ -69,14 +69,14 @@ runPool path actions = do
       fullActions = actions
 
 ----------------------------------------------------------------------
-poolGetBackups :: StoragePool [Hash]
+poolGetBackups :: PoolOp [Hash]
 -- Query the database to get a list of the backups that have been
 -- performed.  These are not returned in any particular order.
 poolGetBackups = do
    atomicLift $ do
       queryHashes "select hash from backups" []
 
-queryHashes :: String -> [SQL.SqlValue] -> PoolOp [Hash]
+queryHashes :: String -> [SQL.SqlValue] -> AtomicPoolOp [Hash]
 -- Perform the given database query, converting the single column rows
 -- into hashes.
 queryHashes query values = do

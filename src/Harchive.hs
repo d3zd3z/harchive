@@ -30,7 +30,7 @@ usage = "Usage: harchive check file ...\n"
 
 ----------------------------------------------------------------------
 
-showBackups :: StoragePool ()
+showBackups :: PoolOp ()
 -- List the backups in the storage pool.
 showBackups = do
    hashes <- poolGetBackups
