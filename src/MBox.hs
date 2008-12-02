@@ -6,9 +6,10 @@ module MBox (
    MBox, AtomicOp,
    atomicLift,
    runMBox,
+   cloneMBox,
 
    -- From the state.
-   get, gets, put, liftIO
+   get, gets, put, liftIO, lift
 ) where
 
 import Control.Concurrent
@@ -44,9 +45,15 @@ runMBox action i = do
    box <- newMVar i
    runReaderT action box
 
+cloneMBox :: MBox i (MBox i a -> IO a)
+-- Make a duplicate reader of this MBox.  This is generally used to
+-- convert an MBox action into an IO that can be given to forkIO.
+-- Note that the clone is in the MBox monad, so needs to be taken
+-- there, not in AtomicOp.  It can easily be passed into the AtomicOp,
+-- however.
+cloneMBox = do
+   box <- ask
+   return $ \action -> runReaderT action box
+
 -- $TODO
--- Since the MBox is a ReaderT, it is possible to get the mbox
--- directly, and use runReaderT lifted into IO to make a duplicate
--- MBox.  This is actually probably going to be common, since one big
--- use of these is for concurrent programming.  Need to come up with a
--- clean API to do this.
+-- Write an example.

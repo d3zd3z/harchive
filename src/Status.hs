@@ -55,7 +55,7 @@ import MBox
 
 import Data.Int
 import Control.Concurrent
-import Control.Monad.Reader
+import Control.Monad
 
 -- "Outer" monad, holding the MVar containing the atomic state.
 type StatusIO a = MBox InternalState a
@@ -97,14 +97,14 @@ data Status = Status {
 -- Start the status monitor running (if not already).
 startStatus :: StatusIO ()
 startStatus = do
-   mvar <- ask   -- Needed for forkIO below.
+   clone <- cloneMBox
    atomicLift $ do
       state <- get
       case state of
 	 Just _ -> return ()
 	 Nothing -> do
 	    put $ Just initialStatus
-	    liftIO $ forkIO $ runReaderT printThread mvar
+	    liftIO $ forkIO $ clone printThread
 	    return ()
 
 printThread :: StatusIO ()
