@@ -8,7 +8,7 @@ module MBox (
    runMBox,
 
    -- From the state.
-   get, put
+   get, gets, put, liftIO
 ) where
 
 import Control.Concurrent

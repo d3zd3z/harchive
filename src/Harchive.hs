@@ -11,6 +11,8 @@ import Chunk.IO
 import Status
 import Pool
 
+import Data.List
+
 main :: IO ()
 main = do
    args <- getArgs
@@ -19,11 +21,20 @@ main = do
 	 statusToIO 1 $ mapM_ runCheck files
 	 -- mapM_ (statusToIO 1 . runCheck) files
       ["pool", path] -> runPool path $ return ()
+      ["list", path] -> runPool path showBackups
       _ ->
 	 ioError (userError usage)
 
 usage :: String
 usage = "Usage: harchive check file ...\n"
+
+----------------------------------------------------------------------
+
+showBackups :: StoragePool ()
+-- List the backups in the storage pool.
+showBackups = do
+   hashes <- poolGetBackups
+   liftIO $ putStrLn (intercalate "\n" $ map show hashes)
 
 ----------------------------------------------------------------------
 

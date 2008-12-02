@@ -4,15 +4,21 @@
 ----------------------------------------------------------------------
 
 module Pool (
-   thump,
    StoragePool,
    runPool,
+
+   -- * Operations on the pool.
+   poolGetBackups,
+
+   -- * Utilities from other modules.
    liftIO
 ) where
 
 import Hash
 import HexDump
 import Chunk.IO
+
+import MBox
 
 import qualified Database.HDBC as SQL
 import qualified Database.HDBC.Sqlite3 as SQL
@@ -27,13 +33,12 @@ import System.FilePath
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 
-import Control.Concurrent
 import Control.Exception (bracket)
-import Control.Monad.Reader
-import Control.Monad.State.Strict
+import Control.Monad
 import Data.List (intercalate)
 
-type StoragePool a = ReaderT (MVar PoolState) IO a
+type StoragePool a = MBox PoolState a
+type PoolOp a = AtomicOp PoolState a
 
 -- The storage pool contains a directory of chunk files, and an SQLite
 -- database.
@@ -59,11 +64,30 @@ runPool path actions = do
 	 basePath = path,
 	 connection = db,
 	 chunkFiles = cf }
-      mvar <- newMVar state0
-      result <- runReaderT fullActions mvar
-      return result
+      runMBox fullActions state0
    where
       fullActions = actions
+
+----------------------------------------------------------------------
+poolGetBackups :: StoragePool [Hash]
+-- Query the database to get a list of the backups that have been
+-- performed.  These are not returned in any particular order.
+poolGetBackups = do
+   atomicLift $ do
+      queryHashes "select hash from backups" []
+
+queryHashes :: String -> [SQL.SqlValue] -> PoolOp [Hash]
+-- Perform the given database query, converting the single column rows
+-- into hashes.
+queryHashes query values = do
+   db <- gets connection
+   rows <- liftIO $ SQL.quickQuery' db query values
+   return $ map sqlToHash1 rows
+   where
+      sqlToHash1 [sHash] = byteStringToHash $ SQL.fromSql sHash
+      sqlToHash1 _ = error "Incorrect number of columns from query"
+
+----------------------------------------------------------------------
 
 validatePath :: FilePath -> IO ()
 -- Perform a series of validations on the directory specified for the
@@ -243,14 +267,3 @@ schemaHash = hashOf combined
    where
       combined = L.pack . (map $ fromIntegral . fromEnum) $ combinedString
       combinedString = intercalate ";" (schema ++ [""])
-
--- Debugging stuff.
-thump :: IO ()
-thump = do
-   db <- SQL.connectSqlite3 "pool/pool-info.sqlite3"
-   answer <- SQL.quickQuery' db
-      "select value from config where key = 'schema_hash'" []
-   let clean = map ((SQL.fromSql :: SQL.SqlValue -> B.ByteString) . head) answer
-   putStrLn $ "Answer: " ++ show clean
-   putStrLn $ "Schema hash: " ++ toHex schemaHash
-   SQL.disconnect db
