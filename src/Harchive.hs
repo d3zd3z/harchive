@@ -34,7 +34,9 @@ showBackups :: PoolOp ()
 -- List the backups in the storage pool.
 showBackups = do
    hashes <- poolGetBackups
-   liftIO $ putStrLn (intercalate "\n" $ map show hashes)
+   positions <- mapM poolReadChunk hashes
+   let info = zip hashes positions
+   liftIO $ putStrLn (intercalate "\n" $ map show info)
 
 ----------------------------------------------------------------------
 

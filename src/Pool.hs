@@ -9,6 +9,7 @@ module Pool (
 
    -- * Operations on the pool.
    poolGetBackups,
+   poolReadChunk,
 
    -- * Utilities from other modules.
    liftIO
@@ -16,6 +17,7 @@ module Pool (
 
 import Hash
 import HexDump
+import Chunk
 import Chunk.IO
 
 import MBox
@@ -74,18 +76,61 @@ poolGetBackups :: PoolOp [Hash]
 -- performed.  These are not returned in any particular order.
 poolGetBackups = do
    atomicLift $ do
-      queryHashes "select hash from backups" []
+      bs <- query1 "select hash from backups" []
+      return $ map byteStringToHash bs
 
-queryHashes :: String -> [SQL.SqlValue] -> AtomicPoolOp [Hash]
--- Perform the given database query, converting the single column rows
--- into hashes.
-queryHashes query values = do
+poolReadChunk :: Hash -> PoolOp (Maybe Chunk)
+-- Reads a chunk from the pool, if present.
+poolReadChunk hash = do
+   atomicLift $ do
+      place <- query2 ("select file, offset from hashes \
+	        \ where hash = " ++ hashToSql hash) []
+      maybe (return Nothing) getChunk $ maybeOne place
+      where
+	 getChunk (file, offset) = do
+	    cfs <- gets chunkFiles
+	    let cf = cfs IntMap.! file
+	    liftM Just $ liftIO $ chunkRead_ cf offset
+
+-- These are a little tedious, since we have to spell out the types.
+
+query1 :: (SQL.SqlType a) => String -> [SQL.SqlValue] -> AtomicPoolOp [a]
+-- Perform a query where each row expects a single column result.
+query1 = queryN convert1
+   where
+      convert1 [a] = SQL.fromSql a
+      convert1 _ = error "Expecting 1 column in result"
+
+query2 :: (SQL.SqlType a, SQL.SqlType b) =>
+   String -> [SQL.SqlValue] -> AtomicPoolOp [(a, b)]
+-- Perform a query where each row expects two columns.
+query2 = queryN convert2
+   where
+      convert2 [a, b] = (SQL.fromSql a, SQL.fromSql b)
+      convert2 _ = error "Expecting 2 columns in result"
+
+queryN :: ([SQL.SqlValue] -> a) -> String -> [SQL.SqlValue] -> AtomicPoolOp [a]
+-- Perform a query where the given function is applied over each
+-- resulting row to produce the result.
+queryN convert query values = do
    db <- gets connection
    rows <- liftIO $ SQL.quickQuery' db query values
-   return $ map sqlToHash1 rows
-   where
-      sqlToHash1 [sHash] = byteStringToHash $ SQL.fromSql sHash
-      sqlToHash1 _ = error "Incorrect number of columns from query"
+   return $ map convert rows
+
+{-
+onlyOne :: [a] -> a
+-- Reduce a query result to a single value, generating an error if
+-- there is more than one result row.
+onlyOne [a] = a
+onlyOne _ = error "Query is expecting a single result"
+-}
+
+maybeOne :: [a] -> Maybe a
+-- Reduce a query to a single value, if there is one, Nothing if no
+-- rows were returned, or an error if more than 1 was returned.
+maybeOne [] = Nothing
+maybeOne [a] = Just a
+maybeOne _ = error "Query expects zero or one result"
 
 ----------------------------------------------------------------------
 
