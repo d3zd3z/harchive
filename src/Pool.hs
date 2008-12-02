@@ -22,6 +22,7 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 
 import Control.Concurrent
+import Control.Exception (bracket)
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.List (intercalate)
@@ -42,15 +43,15 @@ runPool :: FilePath -> StoragePool a -> IO a
 runPool path actions = do
    -- TODO: Verify the pool path.
    validatePath path
-   db <- SQL.connectSqlite3 (path ++ "/" ++ databaseName)
-   setupSchema db
-   let state0 = PoolState {
-      basePath = path,
-      connection = db }
-   mvar <- newMVar state0
-   result <- runReaderT fullActions mvar
-   SQL.disconnect db
-   return result
+   let dbName = path ++ "/" ++ databaseName
+   bracket (SQL.connectSqlite3 dbName) SQL.disconnect $ \db -> do
+      setupSchema db
+      let state0 = PoolState {
+	 basePath = path,
+	 connection = db }
+      mvar <- newMVar state0
+      result <- runReaderT fullActions mvar
+      return result
    where
       fullActions = actions
 
