@@ -13,9 +13,14 @@ import Hash
 import Status
 import Pool
 
+import qualified Codec.Binary.Base64 as Base64
+import qualified Data.ByteString as B
+
+import Control.Monad
 import Data.Maybe
 import Data.Time
 import System.Locale
+import Text.Printf
 
 import Data.List
 import Data.Ord
@@ -29,6 +34,7 @@ main = do
 	 -- mapM_ (statusToIO 1 . runCheck) files
       ["pool", path] -> runPool path $ return ()
       ["list", path] -> runPool path showBackups
+      ["show", path, hash] -> runPool path $ showOne (fromHex hash)
       _ ->
 	 ioError (userError usage)
 
@@ -68,6 +74,7 @@ data BackupInfo = BackupInfo {
    biHost, biDomain :: String,
    biBackup :: String,
    biStartTime, biEndTime :: UTCTime,
+   biHash :: Hash,
    biInfo :: Sexp }
 decodeBackupInfo :: Chunk -> BackupInfo
 decodeBackupInfo chunk =
@@ -77,6 +84,7 @@ decodeBackupInfo chunk =
       backup = getField "BACKUP"
       startTime = getField "START-TIME"
       endTime = getField "END-TIME"
+      hash = getField "HASH"
       getField key = maybe (error $ "field missing " ++ key) id $ lookupString key $ info
       info = either (\_msg -> error "Invalid parse") id infoE
       infoE = decodeSexp $ chunkData chunk
@@ -85,10 +93,26 @@ decodeBackupInfo chunk =
 	 biHost = host, biDomain = domain,
 	 biBackup = backup,
 	 biStartTime = decodeUTC startTime, biEndTime = decodeUTC endTime,
+	 biHash = byteStringToHash $ B.pack $ fromJust $ Base64.decode hash,
 	 biInfo = info }
 
 decodeUTC :: String -> UTCTime
 decodeUTC = readTime defaultTimeLocale "%FT%TZ"
+
+----------------------------------------------------------------------
+
+showOne :: Hash -> PoolOp ()
+showOne hash = do
+   tz <- liftIO $ getCurrentTimeZone
+   chunk <- liftM fromJust $ poolReadChunk hash
+   let info = decodeBackupInfo chunk
+   let sTime = formatTime defaultTimeLocale "%F %H:%M"
+	 (utcToLocalTime tz $ biStartTime info)
+   liftIO $ printf "Backup from %s:%s on %s\n" (biHost info)
+      (biBackup info) sTime
+   liftIO $ printf "Root = %s\n" (show $ biHash info)
+   rootChunk <- liftM fromJust $ poolReadChunk (biHash info)
+   liftIO $ printf "sexp = %s\n" (show $ decodeSexps $ chunkData rootChunk)
 
 ----------------------------------------------------------------------
 

@@ -8,7 +8,7 @@
 -- types (string, and numeric).
 
 module DecodeSexp (
-   decodeSexp,
+   decodeSexp, decodeSexps,
    Sexp, SexpValue(..),
    svString, svInteger,
    lookupString, lookupInteger
@@ -21,6 +21,9 @@ import Numeric (readDec)
 decodeSexp :: L.ByteString -> Either ParseError Sexp
 decodeSexp = parse sexp "data" . asString
 
+decodeSexps :: L.ByteString -> Either ParseError [Sexp]
+decodeSexps = parse sexps "data" . asString
+
 type Sexp = [(String, SexpValue)]
 
 -- Lookups of expected values.  Causes an error if the item is
@@ -30,6 +33,9 @@ lookupString str = fmap svString . lookup str
 
 lookupInteger :: String -> Sexp -> Maybe Integer
 lookupInteger str = fmap svInteger . lookup str
+
+sexps :: Parser [Sexp]
+sexps = many sexp
 
 sexp :: Parser Sexp
 sexp = do
