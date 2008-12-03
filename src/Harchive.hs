@@ -13,6 +13,10 @@ import Hash
 import Status
 import Pool
 
+import Data.Maybe
+import Data.Time
+import System.Locale
+
 import Data.List
 import Data.Ord
 
@@ -40,29 +44,51 @@ showBackups :: PoolOp ()
 showBackups = do
    hashes <- poolGetBackups
    chunks <- mapM poolReadChunk hashes
-   let chunks' = map (maybe (error "Chunk missing") id) chunks
-   let chunkInfo = map (decodeSexp . chunkData) chunks'
-   let chunkInfo' = map (either (\_msg -> error $ "Invalid data: ") id) chunkInfo
-   let info = zip hashes chunkInfo'
-   let sortedInfo = sortBy (comparing $ dateOf . snd) info
-   liftIO $ putStrLn (intercalate "\n" $ map backupInfo sortedInfo)
-   where
-      dateOf = maybe (error "field missing") id . lookupString "END-TIME"
+   locally <- liftIO $ getCurrentTimeZone
+   let chunks' = map fromJust chunks
+   let chunkInfo = map decodeBackupInfo chunks'
+   let info = zip hashes chunkInfo
+   let sortedInfo = sortBy (comparing $ biEndTime . snd) info
+   liftIO $ putStrLn (intercalate "\n" $ map (backupInfo locally) sortedInfo)
 
-backupInfo :: (Hash, Sexp) -> String
+backupInfo :: TimeZone -> (Hash, BackupInfo) -> String
 -- Nicely print the information about the backups.
-backupInfo (hash, info) =
+backupInfo tz (hash, info) =
    toHex hash ++ " " ++
-      lPad 10 (mustLookupString "HOST" info) ++ " " ++
-      lPad 15 (mustLookupString "BACKUP" info) ++ " " ++
-      mustLookupString "START-TIME" info
-   where
-      mustLookupString key = maybe (error "field missing") id . lookupString key
+      lPad 10 (biHost info) ++ " " ++
+      lPad 15 (biBackup info) ++ " " ++
+      formatTime defaultTimeLocale "%F %H:%M" (utcToLocalTime tz $ biStartTime info)
 
 lPad :: Int -> String -> String
 -- Left padded and truncating version of the source string.
 lPad n str = base ++ replicate (n - length base) ' '
    where base = take n str
+
+data BackupInfo = BackupInfo {
+   biHost, biDomain :: String,
+   biBackup :: String,
+   biStartTime, biEndTime :: UTCTime,
+   biInfo :: Sexp }
+decodeBackupInfo :: Chunk -> BackupInfo
+decodeBackupInfo chunk =
+   let
+      host = getField "HOST"
+      domain = getField "DOMAIN"
+      backup = getField "BACKUP"
+      startTime = getField "START-TIME"
+      endTime = getField "END-TIME"
+      getField key = maybe (error $ "field missing " ++ key) id $ lookupString key $ info
+      info = either (\_msg -> error "Invalid parse") id infoE
+      infoE = decodeSexp $ chunkData chunk
+   in
+      BackupInfo {
+	 biHost = host, biDomain = domain,
+	 biBackup = backup,
+	 biStartTime = decodeUTC startTime, biEndTime = decodeUTC endTime,
+	 biInfo = info }
+
+decodeUTC :: String -> UTCTime
+decodeUTC = readTime defaultTimeLocale "%FT%TZ"
 
 ----------------------------------------------------------------------
 

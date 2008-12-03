@@ -36,7 +36,8 @@ library
       dataenc >= 0.11.1,
       directory >= 1,
       filepath >= 1.1,
-      containers >= 0.1
+      containers >= 0.1,
+      time >= 1.1.2, old-locale
    ghc-options: -Wall
    extra-libraries: ssl
    exposed-modules:
