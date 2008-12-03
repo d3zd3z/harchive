@@ -75,7 +75,7 @@ data BackupInfo = BackupInfo {
    biBackup :: String,
    biStartTime, biEndTime :: UTCTime,
    biHash :: Hash,
-   biInfo :: Sexp }
+   biInfo :: Alist }
 decodeBackupInfo :: Chunk -> BackupInfo
 decodeBackupInfo chunk =
    let
@@ -86,8 +86,8 @@ decodeBackupInfo chunk =
       endTime = getField "END-TIME"
       hash = getField "HASH"
       getField key = maybe (error $ "field missing " ++ key) id $ lookupString key $ info
-      info = either (\_msg -> error "Invalid parse") id infoE
-      infoE = decodeSexp $ chunkData chunk
+      (_, info) = either (\_msg -> error "Invalid parse") id infoE
+      infoE = decodeAlist 0 $ chunkData chunk
    in
       BackupInfo {
 	 biHost = host, biDomain = domain,
@@ -112,7 +112,7 @@ showOne hash = do
       (biBackup info) sTime
    liftIO $ printf "Root = %s\n" (show $ biHash info)
    rootChunk <- liftM fromJust $ poolReadChunk (biHash info)
-   liftIO $ printf "sexp = %s\n" (show $ decodeSexps $ chunkData rootChunk)
+   liftIO $ printf "sexp = %s\n" (show $ decodeAlists 2 $ chunkData rootChunk)
 
 ----------------------------------------------------------------------
 

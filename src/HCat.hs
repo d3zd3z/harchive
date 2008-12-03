@@ -42,10 +42,10 @@ dbInfo = do
 	       putStrLn $ "At " ++ show file ++ ", " ++ show offset
 	       chunk <- poolGetChunk file offset
 	       putStr . hexDump . chunkData $ chunk
-	       let bdata' = decodeSexp . chunkData $ chunk
+	       let bdata' = decodeAlist 0 . chunkData $ chunk
 	       let bdata = either (error . show) id bdata'
 	       putStrLn . show $ bdata
-	       let bhash = lookupString "HASH" bdata >>= decode
+	       let bhash = lookupString "HASH" (snd bdata) >>= decode
 	       putStrLn . show $ (fmap B.pack $ bhash)
 	 putStrLn "-------------------------"
    mapM_ showem answer

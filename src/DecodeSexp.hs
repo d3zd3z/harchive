@@ -8,9 +8,8 @@
 -- types (string, and numeric).
 
 module DecodeSexp (
-   decodeSexp, decodeSexps,
-   Sexp, SexpValue(..),
-   svString, svInteger,
+   decodeAlist, decodeAlists,
+   Alist, SexpValue(..),
    lookupString, lookupInteger
 ) where
 
@@ -18,29 +17,35 @@ import Text.ParserCombinators.Parsec
 import qualified Data.ByteString.Lazy as L
 import Numeric (readDec)
 
-decodeSexp :: L.ByteString -> Either ParseError Sexp
-decodeSexp = parse sexp "data" . asString
+decodeAlist :: Int -> L.ByteString -> Either ParseError ([SexpValue], Alist)
+-- Parse a single, simple sexp, and return the first 'n' of the items
+-- as the first of the result pair, and treat the rest of the sexp as
+-- a list of keyword, value pairs, making an alist.
+decodeAlist n = parse (alist n) "data" . asString
 
-decodeSexps :: L.ByteString -> Either ParseError [Sexp]
-decodeSexps = parse sexps "data" . asString
+decodeAlists :: Int -> L.ByteString -> Either ParseError [([SexpValue], Alist)]
+-- Parse concatenated alists as in 'decodeAlist', returning the result
+-- as a list.  The same amount is consumed from each item.
+decodeAlists n = parse (alists n) "data" . asString
 
-newtype Sexp = Sexp { getSexp :: [(String, SexpValue)] }
+newtype Alist = Alist { getAlist :: [(String, SexpValue)] }
    deriving (Show)
 
 -- Lookups of expected values.  Causes an error if the item is
 -- present, but of the wrong type.
-lookupString :: String -> Sexp -> Maybe String
-lookupString str = fmap svString . lookup str . getSexp
+lookupString :: String -> Alist -> Maybe String
+lookupString str = fmap svString . lookup str . getAlist
 
-lookupInteger :: String -> Sexp -> Maybe Integer
-lookupInteger str = fmap svInteger . lookup str . getSexp
+lookupInteger :: String -> Alist -> Maybe Integer
+lookupInteger str = fmap svInteger . lookup str . getAlist
 
-sexps :: Parser [Sexp]
-sexps = many sexp
+alists :: Int -> Parser [([SexpValue], Alist)]
+alists n = many (alist n)
 
-sexp :: Parser Sexp
-sexp = do
+alist :: Int -> Parser ([SexpValue], Alist)
+alist n = do
    char '('
+   prefix <- count n (spaces >> value)
    sets <- many $ do
       spaces
       k <- keyword
@@ -48,7 +53,7 @@ sexp = do
       v <- value
       return (k, v)
    char ')'
-   return $ Sexp sets
+   return $ (prefix, Alist sets)
 
 -- Assumes (for now) that keywords consist strictly of alphaNum's
 keyword :: Parser String
@@ -61,9 +66,9 @@ kwchar = alphaNum <|> char '-'
 
 value :: Parser SexpValue
 value = do
-   vstring <|> vinteger
+   vstring <|> vkeyword <|> vinteger
 
-vstring, vinteger :: Parser SexpValue
+vstring, vinteger, vkeyword :: Parser SexpValue
 vstring = do
    char '\"'
    -- TODO: Handle escapes.
@@ -72,21 +77,19 @@ vstring = do
    return $ SVString text
 
 vinteger = do
-   text <- many digit
+   text <- many1 digit
    return $ SVInteger (fst . head . readDec $ text)
 
+vkeyword = do
+   char ':'
+   name <- many kwchar
+   return $ SVKeyword name
+
 data SexpValue
-   = SVString String
-   | SVInteger Integer
+   = SVString { svString :: String }
+   | SVInteger { svInteger :: Integer }
+   | SVKeyword { svKeyword :: String }
    deriving (Eq, Show)
-
-svString :: SexpValue -> String
-svString (SVString s) = s
-svString _ = error "Expecting sexp string"
-
-svInteger :: SexpValue -> Integer
-svInteger (SVInteger i) = i
-svInteger _ = error "Expecting sexp integer"
 
 asString :: L.ByteString -> String
 asString = map (toEnum . fromIntegral) . L.unpack
