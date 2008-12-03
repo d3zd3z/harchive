@@ -24,15 +24,16 @@ decodeSexp = parse sexp "data" . asString
 decodeSexps :: L.ByteString -> Either ParseError [Sexp]
 decodeSexps = parse sexps "data" . asString
 
-type Sexp = [(String, SexpValue)]
+newtype Sexp = Sexp { getSexp :: [(String, SexpValue)] }
+   deriving (Show)
 
 -- Lookups of expected values.  Causes an error if the item is
 -- present, but of the wrong type.
 lookupString :: String -> Sexp -> Maybe String
-lookupString str = fmap svString . lookup str
+lookupString str = fmap svString . lookup str . getSexp
 
 lookupInteger :: String -> Sexp -> Maybe Integer
-lookupInteger str = fmap svInteger . lookup str
+lookupInteger str = fmap svInteger . lookup str . getSexp
 
 sexps :: Parser [Sexp]
 sexps = many sexp
@@ -47,7 +48,7 @@ sexp = do
       v <- value
       return (k, v)
    char ')'
-   return sets
+   return $ Sexp sets
 
 -- Assumes (for now) that keywords consist strictly of alphaNum's
 keyword :: Parser String
