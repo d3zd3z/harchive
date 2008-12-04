@@ -9,6 +9,6 @@ module Pool (
 import Hash
 import Chunk
 
-class Pool a where
-   poolGetBackups :: a -> IO [Hash]
-   poolReadChunk :: a -> Hash -> IO (Maybe Chunk)
+data Pool = Pool {
+   poolGetBackups :: IO [Hash],
+   poolReadChunk :: Hash -> IO (Maybe Chunk) }

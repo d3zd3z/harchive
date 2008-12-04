@@ -20,10 +20,12 @@ import Control.Monad.Reader
 -- let's recursively walk through it, printing the tree.  It's a
 -- start.
 
-walk :: Pool a => a -> Hash -> IO ()
+type PoolIO a = ReaderT Pool IO a
+
+walk :: Pool -> Hash -> IO ()
 walk pool hash = runReaderT (doWalk "" hash) pool
 
-doWalk :: Pool a => FilePath -> Hash -> ReaderT a IO ()
+doWalk :: FilePath -> Hash -> PoolIO ()
 doWalk base hash = do
    pool <- ask
    chunk <- liftM fromJust $ liftIO $ poolReadChunk pool hash
@@ -31,7 +33,7 @@ doWalk base hash = do
       "dir " -> walkDir base chunk
       k -> error $ "Implement walking for: " ++ k
 
-walkDir :: Pool a => FilePath -> Chunk -> ReaderT a IO ()
+walkDir :: FilePath -> Chunk -> PoolIO ()
 walkDir base chunk = do
    forM_ (decodeMultiChunk chunk) $ \info -> do
       let fullName = base </> attrName info
@@ -47,8 +49,8 @@ walkDir base chunk = do
 	    printf "l %s -> %s\n" fullName (justField info "LINK" :: String)
 	 x -> liftIO $ printf "? %s (%s)\n" fullName x
 
-walkReg :: Pool a => FilePath -> Attr -> ReaderT a IO ()
-walkReg path info = do
+walkReg :: FilePath -> Attr -> PoolIO ()
+walkReg _path info = do
    pool <- ask
    chunk <- liftM fromJust $ liftIO $ poolReadChunk pool (justField info "HASH")
    liftIO $ printf "  (kind = \"%s\")\n" (chunkKind chunk)

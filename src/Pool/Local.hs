@@ -3,12 +3,12 @@
 ----------------------------------------------------------------------
 
 module Pool.Local (
-   LocalPool,
    withLocalPool
 ) where
 
 import Hash
 import HexDump
+import Chunk
 import Chunk.IO
 import Pool
 
@@ -30,9 +30,9 @@ import Control.Concurrent
 import Data.List (intercalate)
 import Control.Monad.State.Strict
 
-newtype LocalPool = LocalPool { theLocalPool :: MVar PoolState }
+type LocalPool = MVar PoolState
 
-withLocalPool :: FilePath -> (LocalPool -> IO a) -> IO a
+withLocalPool :: FilePath -> (Pool -> IO a) -> IO a
 -- Open a pool in the local filesystem, calling 'action' with it as an
 -- argument.
 withLocalPool path action = do
@@ -45,8 +45,10 @@ withLocalPool path action = do
 	 basePath = path,
 	 connection = db,
 	 chunkFiles = cf }
-      box <- newMVar state0
-      action $ LocalPool box
+      pool <- newMVar state0
+      action $ Pool {
+	 poolGetBackups = localPoolGetBackups pool,
+	 poolReadChunk = localPoolReadChunk pool }
 
 type AtomicPoolOp a = StateT PoolState IO a
 
@@ -54,7 +56,7 @@ atomicLift :: LocalPool -> AtomicPoolOp a -> IO a
 -- Run the AtomicPoolOp state with the contents of the pool's MVar,
 -- and put the result back into the MVar.
 atomicLift pool action = do
-   modifyMVar (theLocalPool pool) $ \s -> do
+   modifyMVar pool $ \s -> do
       (x, s') <- runStateT action s
       return (s', x)
 
@@ -70,26 +72,27 @@ data PoolState = PoolState {
    chunkFiles :: IntMap ChunkFile }
 
 ----------------------------------------------------------------------
--- Class instances.
-instance Pool LocalPool where
-   -- Query the database to get a list of the backups that have been
-   -- performed.  These are not returned in any particular order.
-   poolGetBackups pool = do
-      atomicLift pool $ do
-	 bs <- query1 "select hash from backups" []
-	 return $ map byteStringToHash bs
 
-   -- Reads a chunk from the pool, if present.
-   poolReadChunk pool hash = do
-      atomicLift pool $ do
-	 place <- query2 ("select file, offset from hashes \
-		   \ where hash = " ++ hashToSql hash) []
-	 maybe (return Nothing) getChunk $ maybeOne place
-	 where
-	    getChunk (file, offset) = do
-	       cfs <- gets chunkFiles
-	       let cf = cfs IntMap.! file
-	       liftM Just $ liftIO $ chunkRead_ cf offset
+-- Query the database to get a list of the backups that have been
+-- performed.  These are not returned in any particular order.
+localPoolGetBackups :: LocalPool -> IO [Hash]
+localPoolGetBackups pool = do
+   atomicLift pool $ do
+      bs <- query1 "select hash from backups" []
+      return $ map byteStringToHash bs
+
+-- Reads a chunk from the pool, if present.
+localPoolReadChunk :: LocalPool -> Hash -> IO (Maybe Chunk)
+localPoolReadChunk pool hash = do
+   atomicLift pool $ do
+      place <- query2 ("select file, offset from hashes \
+		\ where hash = " ++ hashToSql hash) []
+      maybe (return Nothing) getChunk $ maybeOne place
+      where
+	 getChunk (file, offset) = do
+	    cfs <- gets chunkFiles
+	    let cf = cfs IntMap.! file
+	    liftM Just $ liftIO $ chunkRead_ cf offset
 
 -- These are a little tedious, since we have to spell out the types.
 
