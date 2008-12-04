@@ -2,17 +2,12 @@
 -- Primitive Sexp decoder.
 ----------------------------------------------------------------------
 --
--- |Ldump stores several things in the database as limited lisp
+-- Ldump stores several things in the database as limited lisp
 -- expressions.  Basically, they are always a single parenthesized
 -- list, of keyword value pairs where the values are of a few limited
 -- types (string, and numeric).
 
 module DecodeSexp (
-   -- $valuelist
-   Transformer, TransformFunction,
-   StateTransform(..),
-   decodeValueList,
-
    decodeAlist, decodeAlists,
    Alist, SexpValue(..),
    lookupString, lookupInteger
@@ -21,55 +16,6 @@ module DecodeSexp (
 import Text.ParserCombinators.Parsec
 import qualified Data.ByteString.Lazy as L
 import Numeric (readDec)
-import Data.Maybe
-
-----------------------------------------------------------------------
-
--- $valuelist
--- Many of the fields in the ldump store are stored textually as list
--- sexps.  A specialized format has the first two fields as a keyword
--- representing the kind of the item, and a string giving some value
--- (usually a path).  The remaining items in the list are pairs of
--- keywords and values, the values always having expected types.
-
--- The parser is driven by a generating function, which takes a kind
--- and a value, and returns a function that transforms state.
-data StateTransform st
-   = SXString (String -> st -> st)
-   | SXInteger (Integer -> st -> st)
-
--- The state transformer should take the kind and the value, and
--- return a state transforming function, as well as the initial state.
-type TransformFunction st = String -> StateTransform st
-type Transformer st = String -> String -> (TransformFunction st, st)
-
-decodeValueList :: Transformer st -> L.ByteString ->
-      Either ParseError st
--- Attempt to parse the given bytestring using the specified
--- transformer function.
-decodeValueList xform = runParser (valueList xform) Nothing "data" . asString
-
-valueList :: Transformer st -> CharParser (Maybe st) st
-valueList xform = do
-   spaces >> char '('
-   kind <- spaces >> keyword
-   info <- spaces >> rawString
-   let (handler, st0) = xform kind info
-   setState $ Just st0
-   skipMany $ do
-      k <- spaces >> keyword
-      v <- spaces >> value
-      case (handler k, v) of
-	 (SXString f, SVString x) -> updateState $ Just . f x . fromJust
-	 (SXInteger f, SVInteger x) -> updateState $ Just . f x . fromJust
-	 (SXInteger _, SVString _) -> unexpected $ "String, expecting integer"
-	 (SXString _, SVInteger _) -> unexpected $ "Integer, expecting string"
-	 _ -> unexpected $ "Bad field type (implement keywords)"
-   char ')'
-   stN <- getState
-   return $ fromJust stN
-
-----------------------------------------------------------------------
 
 decodeAlist :: Int -> L.ByteString -> Either ParseError ([SexpValue], Alist)
 -- Parse a single, simple sexp, and return the first 'n' of the items
@@ -110,27 +56,19 @@ alist n = do
    return $ (prefix, Alist sets)
 
 -- Assumes (for now) that keywords consist strictly of alphaNum's
-keyword :: CharParser st String
+keyword :: Parser String
 keyword = do
    char ':'
    many kwchar
 
-kwchar :: CharParser st Char
+kwchar :: Parser Char
 kwchar = alphaNum <|> char '-'
 
-value :: CharParser st SexpValue
+value :: Parser SexpValue
 value = do
    vstring <|> vkeyword <|> vinteger
 
-rawString :: CharParser st String
-rawString = do
-   char '\"'
-   -- TODO: Handle escapes.
-   text <- many (noneOf "\\\"")
-   char '\"'
-   return text
-
-vstring, vinteger, vkeyword :: CharParser st SexpValue
+vstring, vinteger, vkeyword :: Parser SexpValue
 vstring = do
    char '\"'
    -- TODO: Handle escapes.

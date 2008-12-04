@@ -45,7 +45,6 @@ library
       HexDump
       Chunk
       Chunk.IO
-      DecodeSexp
    other-modules:
       MBox
       Status

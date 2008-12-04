@@ -74,39 +74,27 @@ data BackupInfo = BackupInfo {
    biHost, biDomain :: String,
    biBackup :: String,
    biStartTime, biEndTime :: UTCTime,
-   biHash :: Hash }
-
+   biHash :: Hash,
+   biInfo :: Alist }
 decodeBackupInfo :: Chunk -> BackupInfo
-decodeBackupInfo chunk = either (\_msg -> error "Invalid parse") id infoE
-   where
-      infoE = decodeValueList backupInfoTransformer . chunkData $ chunk
-
-backupInfoTransformer :: Transformer BackupInfo
-backupInfoTransformer "BACKUP" backup = (xform, info)
-   where
-      info = undefinedInfo backup
-      xform :: TransformFunction BackupInfo
-      xform "HOST" = SXString $ \field st -> st { biHost = field }
-      xform "DOMAIN" = SXString $ \field st -> st { biDomain = field }
-      xform "START-TIME" = SXString $ \field st ->
-	 st { biStartTime = decodeUTC field }
-      xform "END-TIME" = SXString $ \field st ->
-	 st { biEndTime = decodeUTC field }
-      xform "HASH" = SXString $ \field st ->
-	 st { biHash = byteStringToHash $ B.pack $ fromJust $ Base64.decode field }
-      xform "MODE" = SXInteger $ \_field -> id
-      xform "UID" = SXInteger $ \_field -> id
-      xform "GID" = SXInteger $ \_field -> id
-      xform "MTIME" = SXInteger $ \_field -> id
-      xform field = error $ "Unknown backup field: " ++ field
-backupInfoTransformer kind _ =
-   error $ "Expecting BACKUP record, but found: " ++ kind
-
-undefinedInfo :: String -> BackupInfo
-undefinedInfo name = BackupInfo {
-   biBackup = name,
-   biHost = undefined, biDomain = undefined, biStartTime = undefined,
-   biEndTime = undefined, biHash = undefined }
+decodeBackupInfo chunk =
+   let
+      host = getField "HOST"
+      domain = getField "DOMAIN"
+      backup = getField "BACKUP"
+      startTime = getField "START-TIME"
+      endTime = getField "END-TIME"
+      hash = getField "HASH"
+      getField key = maybe (error $ "field missing " ++ key) id $ lookupString key $ info
+      (_, info) = either (\_msg -> error "Invalid parse") id infoE
+      infoE = decodeAlist 0 $ chunkData chunk
+   in
+      BackupInfo {
+	 biHost = host, biDomain = domain,
+	 biBackup = backup,
+	 biStartTime = decodeUTC startTime, biEndTime = decodeUTC endTime,
+	 biHash = byteStringToHash $ B.pack $ fromJust $ Base64.decode hash,
+	 biInfo = info }
 
 decodeUTC :: String -> UTCTime
 decodeUTC = readTime defaultTimeLocale "%FT%TZ"
