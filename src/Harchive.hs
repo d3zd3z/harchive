@@ -13,6 +13,8 @@ import Hash
 import Status
 import Pool
 
+import qualified Tree
+
 import Control.Monad
 import Data.Maybe
 import Data.Time
@@ -32,6 +34,7 @@ main = do
       ["pool", path] -> runPool path $ return ()
       ["list", path] -> runPool path showBackups
       ["show", path, hash] -> runPool path $ showOne (fromHex hash)
+      ["walk", path, hash] -> runPool path $ runWalk (fromHex hash)
       _ ->
 	 ioError (userError usage)
 
@@ -104,6 +107,12 @@ showOne hash = do
    liftIO $ printf "Root = %s\n" (show $ biHash info)
    rootChunk <- liftM fromJust $ poolReadChunk (biHash info)
    liftIO $ mapM_ (printf "sexp = %s\n" . show) (decodeMultiChunk rootChunk)
+
+runWalk :: Hash -> PoolOp ()
+runWalk hash = do
+   chunk <- liftM fromJust $ poolReadChunk hash
+   let info = decodeBackupInfo chunk
+   Tree.walk "." $ biHash info
 
 ----------------------------------------------------------------------
 
