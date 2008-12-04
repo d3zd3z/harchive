@@ -9,7 +9,7 @@
 -- types (string, and numeric).
 
 module DecodeSexp (
-   decodeAttr,
+   decodeAttr, decodeChunk,
    Attr(..),
    SexpType(..),
    attrField, field, justField,
@@ -19,6 +19,7 @@ module DecodeSexp (
    lookupString, lookupInteger
 ) where
 
+import Chunk
 import Hash
 
 import qualified Codec.Binary.Base64 as Base64
@@ -38,6 +39,13 @@ data Attr = Attr {
    attrAttrs :: Mapping }
    deriving (Show)
 type Mapping = [(String, SexpValue)]
+
+decodeChunk :: Chunk -> Attr
+-- Decode the payload of the chunk as a single Attr, generating an
+-- error if there is a parse problem.
+decodeChunk =
+   either (\_msg -> error "Unable to parse chunk payload") id .
+      decodeAttr . chunkData
 
 decodeAttr :: L.ByteString -> Either ParseError Attr
 decodeAttr = parse attrParser "data" . asString

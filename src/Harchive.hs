@@ -79,8 +79,7 @@ decodeBackupInfo chunk =
    let
       getField :: (SexpType a) => String -> a
       getField = justField info
-      info = either (\_msg -> error "Invalid parse") id infoE
-      infoE = decodeAttr $ chunkData chunk
+      info = decodeChunk chunk
    in
       BackupInfo {
 	 biHost = getField "HOST",
