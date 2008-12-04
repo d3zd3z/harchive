@@ -103,7 +103,7 @@ showOne hash = do
       (biBackup info) sTime
    liftIO $ printf "Root = %s\n" (show $ biHash info)
    rootChunk <- liftM fromJust $ poolReadChunk (biHash info)
-   liftIO $ printf "sexp = %s\n" (show $ decodeAlists 2 $ chunkData rootChunk)
+   liftIO $ mapM_ (printf "sexp = %s\n" . show) (decodeMultiChunk rootChunk)
 
 ----------------------------------------------------------------------
 

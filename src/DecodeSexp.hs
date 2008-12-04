@@ -10,6 +10,7 @@
 
 module DecodeSexp (
    decodeAttr, decodeChunk,
+   decodeMultiAttr, decodeMultiChunk,
    Attr(..),
    SexpType(..),
    attrField, field, justField,
@@ -44,11 +45,19 @@ decodeChunk :: Chunk -> Attr
 -- Decode the payload of the chunk as a single Attr, generating an
 -- error if there is a parse problem.
 decodeChunk =
-   either (\_msg -> error "Unable to parse chunk payload") id .
+   either (\msg -> error $ "Unable to parse one Attr: " ++ show msg) id .
       decodeAttr . chunkData
+
+decodeMultiChunk :: Chunk -> [Attr]
+decodeMultiChunk =
+   either (\msg -> error $ "Unable to parse multiple Attrs: " ++ show msg) id .
+      decodeMultiAttr . chunkData
 
 decodeAttr :: L.ByteString -> Either ParseError Attr
 decodeAttr = parse attrParser "data" . asString
+
+decodeMultiAttr :: L.ByteString -> Either ParseError [Attr]
+decodeMultiAttr = parse multiAttrParser "data" . asString
 
 attrField :: Attr -> String -> Maybe SexpValue
 attrField a key =
@@ -86,6 +95,18 @@ instance SexpType UTCTime where
 
 attrParser :: Parser Attr
 attrParser = do
+   a <- oneAttr
+   eof
+   return a
+
+multiAttrParser :: Parser [Attr]
+multiAttrParser = do
+   a <- many oneAttr
+   eof
+   return a
+
+oneAttr :: Parser Attr
+oneAttr = do
    spaces >> char '('
    kind <- spaces >> keyword
    name <- spaces >> realString
@@ -93,6 +114,7 @@ attrParser = do
       sk <- spaces >> keyword
       sv <- spaces >> value
       return (sk, sv)
+   spaces >> char ')'
    return $ Attr { attrKind = kind, attrName = name, attrAttrs = attrs }
 
 decodeAlist :: Int -> L.ByteString -> Either ParseError ([SexpValue], Alist)
