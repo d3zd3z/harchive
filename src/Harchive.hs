@@ -13,9 +13,6 @@ import Hash
 import Status
 import Pool
 
-import qualified Codec.Binary.Base64 as Base64
-import qualified Data.ByteString as B
-
 import Control.Monad
 import Data.Maybe
 import Data.Time
@@ -75,29 +72,24 @@ data BackupInfo = BackupInfo {
    biBackup :: String,
    biStartTime, biEndTime :: UTCTime,
    biHash :: Hash,
-   biInfo :: Alist }
+   biInfo :: Attr }
+
 decodeBackupInfo :: Chunk -> BackupInfo
 decodeBackupInfo chunk =
    let
-      host = getField "HOST"
-      domain = getField "DOMAIN"
-      backup = getField "BACKUP"
-      startTime = getField "START-TIME"
-      endTime = getField "END-TIME"
-      hash = getField "HASH"
-      getField key = maybe (error $ "field missing " ++ key) id $ lookupString key $ info
-      (_, info) = either (\_msg -> error "Invalid parse") id infoE
-      infoE = decodeAlist 0 $ chunkData chunk
+      getField :: (SexpType a) => String -> a
+      getField = justField info
+      info = either (\_msg -> error "Invalid parse") id infoE
+      infoE = decodeAttr $ chunkData chunk
    in
       BackupInfo {
-	 biHost = host, biDomain = domain,
-	 biBackup = backup,
-	 biStartTime = decodeUTC startTime, biEndTime = decodeUTC endTime,
-	 biHash = byteStringToHash $ B.pack $ fromJust $ Base64.decode hash,
+	 biHost = getField "HOST",
+	 biDomain = getField "DOMAIN",
+	 biBackup = attrName info,
+	 biStartTime = getField "START-TIME",
+	 biEndTime = getField "END-TIME",
+	 biHash = getField "HASH",
 	 biInfo = info }
-
-decodeUTC :: String -> UTCTime
-decodeUTC = readTime defaultTimeLocale "%FT%TZ"
 
 ----------------------------------------------------------------------
 
