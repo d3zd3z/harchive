@@ -7,13 +7,17 @@ dist: .setup-config .force
 	runhaskell Setup.hs sdist
 
 install: .setup-config all
-	runhaskell Setup.hs install
+	runhaskell Setup.hs install --inplace
 
 register: .setup-config .force
 	runhaskell Setup.hs register
 
 unregister: .setup-config .force
 	runhaskell Setup.hs unregister
+
+sure: install
+	${MAKE} -C tests
+	./tests/qc
 
 clean:
 	runhaskell Setup.hs clean

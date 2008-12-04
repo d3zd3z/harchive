@@ -52,8 +52,11 @@ simpleChunkIO = do
    withTmpDir $ \tmpDir -> do
       let name = tmpDir ++ "/cfile1.data"
       cfile <- openChunkFile name
-      len <- chunkFileSize cfile
-      len @?= 0
+
+      -- Determining size no longer writes to the file.
+      -- len <- chunkFileSize cfile
+      -- len @?= 0
+
       let srcChunks = [ c1, c2, c3 ]
       offsets <- mapM (chunkWrite cfile) srcChunks
       newChunks <- mapM (chunkRead_ cfile) offsets
