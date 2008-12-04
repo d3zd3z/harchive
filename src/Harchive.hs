@@ -12,6 +12,7 @@ import DecodeSexp
 import Hash
 import Status
 import Pool
+import Pool.Local
 
 import qualified Tree
 
@@ -31,10 +32,10 @@ main = do
       ("check":files@(_:_)) ->
 	 statusToIO 1 $ mapM_ runCheck files
 	 -- mapM_ (statusToIO 1 . runCheck) files
-      ["pool", path] -> runPool path $ return ()
-      ["list", path] -> runPool path showBackups
-      ["show", path, hash] -> runPool path $ showOne (fromHex hash)
-      ["walk", path, hash] -> runPool path $ runWalk (fromHex hash)
+      ["pool", path] -> withLocalPool path $ \_ -> return ()
+      ["list", path] -> withLocalPool path showBackups
+      ["show", path, hash] -> withLocalPool path $ showOne (fromHex hash)
+      ["walk", path, hash] -> withLocalPool path $ runWalk (fromHex hash)
       _ ->
 	 ioError (userError usage)
 
@@ -45,11 +46,11 @@ usage = "Usage: harchive check file ...\n"
 
 -- TODO: Limit display, and other such fancy things.
 
-showBackups :: PoolOp ()
+showBackups :: Pool a => a -> IO ()
 -- List the backups in the storage pool.
-showBackups = do
-   hashes <- poolGetBackups
-   chunks <- mapM poolReadChunk hashes
+showBackups pool = do
+   hashes <- poolGetBackups pool
+   chunks <- mapM (poolReadChunk pool) hashes
    locally <- liftIO $ getCurrentTimeZone
    let chunks' = map fromJust chunks
    let chunkInfo = map decodeBackupInfo chunks'
@@ -95,24 +96,24 @@ decodeBackupInfo chunk =
 
 ----------------------------------------------------------------------
 
-showOne :: Hash -> PoolOp ()
-showOne hash = do
+showOne :: Pool a => Hash -> a -> IO ()
+showOne hash pool = do
    tz <- liftIO $ getCurrentTimeZone
-   chunk <- liftM fromJust $ poolReadChunk hash
+   chunk <- liftM fromJust $ poolReadChunk pool hash
    let info = decodeBackupInfo chunk
    let sTime = formatTime defaultTimeLocale "%F %H:%M"
 	 (utcToLocalTime tz $ biStartTime info)
    liftIO $ printf "Backup from %s:%s on %s\n" (biHost info)
       (biBackup info) sTime
    liftIO $ printf "Root = %s\n" (show $ biHash info)
-   rootChunk <- liftM fromJust $ poolReadChunk (biHash info)
+   rootChunk <- liftM fromJust $ poolReadChunk pool (biHash info)
    liftIO $ mapM_ (printf "sexp = %s\n" . show) (decodeMultiChunk rootChunk)
 
-runWalk :: Hash -> PoolOp ()
-runWalk hash = do
-   chunk <- liftM fromJust $ poolReadChunk hash
+runWalk :: Pool a => Hash -> a -> IO ()
+runWalk hash pool = do
+   chunk <- liftM fromJust $ poolReadChunk pool hash
    let info = decodeBackupInfo chunk
-   Tree.walk "." $ biHash info
+   Tree.walk pool $ biHash info
 
 ----------------------------------------------------------------------
 

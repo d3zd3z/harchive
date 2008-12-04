@@ -13,28 +13,32 @@ import Pool
 
 import Data.Maybe (fromJust)
 import System.FilePath
-import Control.Monad (liftM, forM_)
 import Text.Printf
+import Control.Monad.Reader
 
 -- Let's see what we can do.  Starting with the hash of a directory,
 -- let's recursively walk through it, printing the tree.  It's a
 -- start.
 
-walk :: FilePath -> Hash -> PoolOp ()
-walk base hash = do
-   chunk <- liftM fromJust $ poolReadChunk hash
+walk :: Pool a => a -> Hash -> IO ()
+walk pool hash = runReaderT (doWalk "" hash) pool
+
+doWalk :: Pool a => FilePath -> Hash -> ReaderT a IO ()
+doWalk base hash = do
+   pool <- ask
+   chunk <- liftM fromJust $ liftIO $ poolReadChunk pool hash
    case chunkKind chunk of
       "dir " -> walkDir base chunk
       k -> error $ "Implement walking for: " ++ k
 
-walkDir :: FilePath -> Chunk -> PoolOp ()
+walkDir :: Pool a => FilePath -> Chunk -> ReaderT a IO ()
 walkDir base chunk = do
    forM_ (decodeMultiChunk chunk) $ \info -> do
       let fullName = base </> attrName info
       case attrKind info of
 	 "DIR" -> do
 	    liftIO $ printf "d %s\n" fullName
-	    walk fullName (justField info "HASH")
+	    doWalk fullName (justField info "HASH")
 	    liftIO $ printf "u %s\n" fullName
 	 "REG" -> do
 	    liftIO $ printf "- %s\n" fullName
@@ -43,7 +47,8 @@ walkDir base chunk = do
 	    printf "l %s -> %s\n" fullName (justField info "LINK" :: String)
 	 x -> liftIO $ printf "? %s (%s)\n" fullName x
 
-walkReg :: FilePath -> Attr -> PoolOp ()
+walkReg :: Pool a => FilePath -> Attr -> ReaderT a IO ()
 walkReg path info = do
-   chunk <- liftM fromJust $ poolReadChunk (justField info "HASH")
+   pool <- ask
+   chunk <- liftM fromJust $ liftIO $ poolReadChunk pool (justField info "HASH")
    liftIO $ printf "  (kind = \"%s\")\n" (chunkKind chunk)

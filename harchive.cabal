@@ -45,6 +45,8 @@ library
       HexDump
       Chunk
       Chunk.IO
+      Pool
+      Pool.Local
    other-modules:
       MBox
       Status
@@ -75,6 +77,8 @@ executable harchive
       Status
       MBox
       Tree
+      Pool
+      Pool.Local
 
 -- executable: hfile
 -- main-is: FileServer.hs
