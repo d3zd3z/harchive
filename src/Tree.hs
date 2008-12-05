@@ -52,5 +52,5 @@ walkDir base chunk = do
 walkReg :: FilePath -> Attr -> PoolIO ()
 walkReg _path info = do
    pool <- ask
-   chunk <- liftM fromJust $ liftIO $ poolReadChunk pool (justField info "HASH")
-   liftIO $ printf "  (kind = \"%s\")\n" (chunkKind chunk)
+   kind <- liftM fromJust $ liftIO $ poolChunkKind pool (justField info "HASH")
+   liftIO $ printf "  (kind = \"%s\")\n" kind

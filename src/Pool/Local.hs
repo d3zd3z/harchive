@@ -49,6 +49,7 @@ withLocalPool path action = do
       pool <- newMVar state0
       action $ Pool {
 	 poolGetBackups = localPoolGetBackups pool,
+	 poolChunkKind = localPoolChunkKind pool,
 	 poolReadChunk = localPoolReadChunk pool }
 
 type AtomicPoolOp a = StateT PoolState IO a
@@ -77,7 +78,7 @@ data PoolState = PoolState {
 -- Each time we query the database, we cache the last result.
 data CacheResult
    = NoCache
-   | CacheHit Hash (Int, Int)
+   | CacheHit Hash (Int, Int, String)
    | CacheMiss Hash
 
 ----------------------------------------------------------------------
@@ -97,12 +98,22 @@ localPoolReadChunk pool hash = do
       place <- lookupHash hash
       maybe (return Nothing) getChunk place
       where
-	 getChunk (file, offset) = do
+	 getChunk (file, offset, _) = do
 	    cfs <- gets chunkFiles
 	    let cf = cfs IntMap.! file
 	    liftM Just $ liftIO $ chunkRead_ cf offset
 
-lookupHash :: Hash -> AtomicPoolOp (Maybe (Int, Int))
+localPoolChunkKind :: LocalPool -> Hash -> IO (Maybe String)
+-- Return the kind of a given chunk in the storage pool, or Nothing if
+-- it is not present.
+localPoolChunkKind pool hash = do
+   atomicLift pool $ do
+      place <- lookupHash hash
+      return $ fmap thrd $ place
+      where
+	 thrd (_, _, x) = x
+
+lookupHash :: Hash -> AtomicPoolOp (Maybe (Int, Int, String))
 -- Determine the location of the specified hash in the database.
 lookupHash hash = do
    state <- get
@@ -111,7 +122,7 @@ lookupHash hash = do
       (CacheHit h pos) | h == hash -> return $ Just pos
       (CacheMiss h) | h == hash -> return Nothing
       _ -> do
-	 place <- query2 ("select file, offset from hashes \
+	 place <- query3 ("select file, offset, kind from hashes \
 		     \ where hash = " ++ hashToSql hash) []
 	 let place2 = maybeOne place
 	 let newCache = case place2 of
@@ -129,6 +140,7 @@ query1 = queryN convert1
       convert1 [a] = SQL.fromSql a
       convert1 _ = error "Expecting 1 column in result"
 
+{-
 query2 :: (SQL.SqlType a, SQL.SqlType b) =>
    String -> [SQL.SqlValue] -> AtomicPoolOp [(a, b)]
 -- Perform a query where each row expects two columns.
@@ -136,6 +148,15 @@ query2 = queryN convert2
    where
       convert2 [a, b] = (SQL.fromSql a, SQL.fromSql b)
       convert2 _ = error "Expecting 2 columns in result"
+-}
+
+query3 :: (SQL.SqlType a, SQL.SqlType b, SQL.SqlType c) =>
+   String -> [SQL.SqlValue] -> AtomicPoolOp [(a, b, c)]
+-- Perform a query where each row expects three columns.
+query3 = queryN convert3
+   where
+      convert3 [a, b, c] = (SQL.fromSql a, SQL.fromSql b, SQL.fromSql c)
+      convert3 _ = error "Expecting 3 columns in result"
 
 queryN :: ([SQL.SqlValue] -> a) -> String -> [SQL.SqlValue] -> AtomicPoolOp [a]
 -- Perform a query where the given function is applied over each
