@@ -80,10 +80,12 @@ data CacheResult
 
 ----------------------------------------------------------------------
 
-instance Pool LocalPool where
+instance ChunkQuerier LocalPool where
    poolGetBackups = localPoolGetBackups
-   poolReadChunk = localPoolReadChunk
    poolChunkKind = localPoolChunkKind
+
+instance ChunkReader LocalPool where
+   poolReadChunk = localPoolReadChunk
 
 -- Query the database to get a list of the backups that have been
 -- performed.  These are not returned in any particular order.

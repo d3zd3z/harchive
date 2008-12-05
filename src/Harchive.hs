@@ -46,7 +46,7 @@ usage = "Usage: harchive check file ...\n"
 
 -- TODO: Limit display, and other such fancy things.
 
-showBackups :: Pool p => p -> IO ()
+showBackups :: ChunkReader p => p -> IO ()
 -- List the backups in the storage pool.
 showBackups pool = do
    hashes <- poolGetBackups pool
@@ -96,7 +96,7 @@ decodeBackupInfo chunk =
 
 ----------------------------------------------------------------------
 
-showOne :: Pool p => Hash -> p -> IO ()
+showOne :: ChunkReader p => Hash -> p -> IO ()
 showOne hash pool = do
    tz <- liftIO $ getCurrentTimeZone
    chunk <- liftM fromJust $ poolReadChunk pool hash
@@ -109,7 +109,7 @@ showOne hash pool = do
    rootChunk <- liftM fromJust $ poolReadChunk pool (biHash info)
    liftIO $ mapM_ (printf "sexp = %s\n" . show) (decodeMultiChunk rootChunk)
 
-runWalk :: Pool p => Hash -> p -> IO ()
+runWalk :: ChunkReader p => Hash -> p -> IO ()
 runWalk hash pool = do
    chunk <- liftM fromJust $ poolReadChunk pool hash
    let info = decodeBackupInfo chunk

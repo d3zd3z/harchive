@@ -21,9 +21,9 @@ import Control.Monad.Reader
 -- let's recursively walk through it, printing the tree.  It's a
 -- start.
 
-type PoolIO a = forall p. Pool p => ReaderT p IO a
+type PoolIO a = forall p. ChunkReader p => ReaderT p IO a
 
-walk :: Pool p => p -> Hash -> IO ()
+walk :: ChunkReader p => p -> Hash -> IO ()
 walk pool hash = runReaderT (doWalk "" hash) pool
 
 doWalk :: FilePath -> Hash -> PoolIO ()
