@@ -1,3 +1,4 @@
+{-# LANGUAGE Rank2Types #-}
 ----------------------------------------------------------------------
 -- Directory Trees.
 ----------------------------------------------------------------------
@@ -20,9 +21,9 @@ import Control.Monad.Reader
 -- let's recursively walk through it, printing the tree.  It's a
 -- start.
 
-type PoolIO a = ReaderT Pool IO a
+type PoolIO a = forall p. Pool p => ReaderT p IO a
 
-walk :: Pool -> Hash -> IO ()
+walk :: Pool p => p -> Hash -> IO ()
 walk pool hash = runReaderT (doWalk "" hash) pool
 
 doWalk :: FilePath -> Hash -> PoolIO ()

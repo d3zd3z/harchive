@@ -10,16 +10,22 @@ module Pool (
 import Hash
 import Chunk
 
-data Pool = Pool {
-   poolGetBackups :: IO [Hash],
-   poolChunkKind :: Hash -> IO (Maybe String),
-   poolReadChunk :: Hash -> IO (Maybe Chunk),
-   poolHas :: Hash -> IO Bool }
+class Pool a where
+   poolGetBackups :: a -> IO [Hash]
+   poolChunkKind :: a -> Hash -> IO (Maybe String)
+   poolReadChunk :: a -> Hash -> IO (Maybe Chunk)
+   poolHash :: a -> Hash -> IO Bool
 
-emptyPool :: Pool
--- A pool that has no data.
-emptyPool = Pool {
-   poolGetBackups = return [],
-   poolChunkKind = \_ -> return Nothing,
-   poolReadChunk = \_ -> return Nothing,
-   poolHas = \_ -> return False }
+   poolHash p hash = do
+      info <- poolChunkKind p hash
+      return $ maybe False (\_ -> True) info
+
+newtype EmptyPool = EmptyPool ()
+
+instance Pool EmptyPool where
+   poolGetBackups _ = return []
+   poolChunkKind _ _ = return Nothing
+   poolReadChunk _ _ = return Nothing
+
+emptyPool :: EmptyPool
+emptyPool = EmptyPool ()

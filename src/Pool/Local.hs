@@ -30,9 +30,9 @@ import Control.Concurrent
 import Data.List (intercalate)
 import Control.Monad.State.Strict
 
-type LocalPool = MVar PoolState
+newtype LocalPool = LocalPool { theLocalPool :: MVar PoolState }
 
-withLocalPool :: FilePath -> (Pool -> IO a) -> IO a
+withLocalPool :: FilePath -> (LocalPool -> IO a) -> IO a
 -- Open a pool in the local filesystem, calling 'action' with it as an
 -- argument.
 withLocalPool path action = do
@@ -47,11 +47,7 @@ withLocalPool path action = do
 	 chunkFiles = cf,
 	 lastCached = NoCache }
       pool <- newMVar state0
-      action $ Pool {
-	 poolGetBackups = localPoolGetBackups pool,
-	 poolChunkKind = localPoolChunkKind pool,
-	 poolReadChunk = localPoolReadChunk pool,
-	 poolHas = localPoolHas pool }
+      action $ LocalPool pool
 
 type AtomicPoolOp a = StateT PoolState IO a
 
@@ -59,7 +55,7 @@ atomicLift :: LocalPool -> AtomicPoolOp a -> IO a
 -- Run the AtomicPoolOp state with the contents of the pool's MVar,
 -- and put the result back into the MVar.
 atomicLift pool action = do
-   modifyMVar pool $ \s -> do
+   modifyMVar (theLocalPool pool) $ \s -> do
       (x, s') <- runStateT action s
       return (s', x)
 
@@ -83,6 +79,11 @@ data CacheResult
    | CacheMiss Hash
 
 ----------------------------------------------------------------------
+
+instance Pool LocalPool where
+   poolGetBackups = localPoolGetBackups
+   poolReadChunk = localPoolReadChunk
+   poolChunkKind = localPoolChunkKind
 
 -- Query the database to get a list of the backups that have been
 -- performed.  These are not returned in any particular order.
@@ -114,10 +115,12 @@ localPoolChunkKind pool hash = do
       where
 	 thrd (_, _, x) = x
 
+{-
 localPoolHas :: LocalPool -> Hash -> IO Bool
 localPoolHas pool hash = do
    info <- localPoolChunkKind pool hash
    return $ maybe False (\_ -> True) info
+-}
 
 lookupHash :: Hash -> AtomicPoolOp (Maybe (Int, Int, String))
 -- Determine the location of the specified hash in the database.
