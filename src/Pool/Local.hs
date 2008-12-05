@@ -44,7 +44,8 @@ withLocalPool path action = do
       let state0 = PoolState {
 	 basePath = path,
 	 connection = db,
-	 chunkFiles = cf }
+	 chunkFiles = cf,
+	 lastCached = NoCache }
       pool <- newMVar state0
       action $ Pool {
 	 poolGetBackups = localPoolGetBackups pool,
@@ -69,7 +70,15 @@ data PoolState = PoolState {
    -- connection :: forall a. SQL.IConnection a => a
    connection :: SQL.Connection,
    -- The currently accessible chunkfiles, indexed by cfile number.
-   chunkFiles :: IntMap ChunkFile }
+   chunkFiles :: IntMap ChunkFile,
+   -- Last Chunk we looked up in the database.
+   lastCached :: CacheResult }
+
+-- Each time we query the database, we cache the last result.
+data CacheResult
+   = NoCache
+   | CacheHit Hash (Int, Int)
+   | CacheMiss Hash
 
 ----------------------------------------------------------------------
 
@@ -85,14 +94,31 @@ localPoolGetBackups pool = do
 localPoolReadChunk :: LocalPool -> Hash -> IO (Maybe Chunk)
 localPoolReadChunk pool hash = do
    atomicLift pool $ do
-      place <- query2 ("select file, offset from hashes \
-		\ where hash = " ++ hashToSql hash) []
-      maybe (return Nothing) getChunk $ maybeOne place
+      place <- lookupHash hash
+      maybe (return Nothing) getChunk place
       where
 	 getChunk (file, offset) = do
 	    cfs <- gets chunkFiles
 	    let cf = cfs IntMap.! file
 	    liftM Just $ liftIO $ chunkRead_ cf offset
+
+lookupHash :: Hash -> AtomicPoolOp (Maybe (Int, Int))
+-- Determine the location of the specified hash in the database.
+lookupHash hash = do
+   state <- get
+   let cache = lastCached state
+   case cache of
+      (CacheHit h pos) | h == hash -> return $ Just pos
+      (CacheMiss h) | h == hash -> return Nothing
+      _ -> do
+	 place <- query2 ("select file, offset from hashes \
+		     \ where hash = " ++ hashToSql hash) []
+	 let place2 = maybeOne place
+	 let newCache = case place2 of
+	       Nothing -> CacheMiss hash
+	       Just pos -> CacheHit hash pos
+	 put $ state { lastCached = newCache }
+	 return place2
 
 -- These are a little tedious, since we have to spell out the types.
 
