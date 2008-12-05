@@ -50,7 +50,8 @@ withLocalPool path action = do
       action $ Pool {
 	 poolGetBackups = localPoolGetBackups pool,
 	 poolChunkKind = localPoolChunkKind pool,
-	 poolReadChunk = localPoolReadChunk pool }
+	 poolReadChunk = localPoolReadChunk pool,
+	 poolHas = localPoolHas pool }
 
 type AtomicPoolOp a = StateT PoolState IO a
 
@@ -112,6 +113,11 @@ localPoolChunkKind pool hash = do
       return $ fmap thrd $ place
       where
 	 thrd (_, _, x) = x
+
+localPoolHas :: LocalPool -> Hash -> IO Bool
+localPoolHas pool hash = do
+   info <- localPoolChunkKind pool hash
+   return $ maybe False (\_ -> True) info
 
 lookupHash :: Hash -> AtomicPoolOp (Maybe (Int, Int, String))
 -- Determine the location of the specified hash in the database.
