@@ -47,6 +47,7 @@ library
       Chunk.IO
       Pool
       Pool.Local
+      Pool.Memory
    other-modules:
       MBox
       Status

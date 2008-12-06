@@ -5,6 +5,7 @@
 module Pool (
    ChunkQuerier(..),
    ChunkReader(..),
+   ChunkWriter(..),
    emptyPool
 ) where
 
@@ -25,6 +26,10 @@ class ChunkQuerier a where
 -- |Something that can read the payload of the chunks in the store.
 class (ChunkQuerier a) => ChunkReader a where
    poolReadChunk :: a -> Hash -> IO (Maybe Chunk)
+
+-- |Something that can store chunks.
+class (ChunkQuerier a) => ChunkWriter a where
+   poolWriteChunk :: a -> Chunk -> IO ()
 
 newtype EmptyPool = EmptyPool ()
 

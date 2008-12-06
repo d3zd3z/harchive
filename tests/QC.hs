@@ -3,11 +3,13 @@
 
 module Main where
 
+import PoolTest
+
 import TmpDir
+import Util
 
 import Chunk
 import Chunk.IO
-import HexDump
 import Hash
 import qualified Hash
 
@@ -15,9 +17,7 @@ import Test.HUnit
 import qualified Data.ByteString.Lazy as L
 
 import Control.Monad (when)
--- import System.Cmd
 import System.Exit
-import GenWords
 
 main = do
    -- putStrLn $ show c3
@@ -31,7 +31,8 @@ tests = test [
    "lengthTests" ~: lengthTests,
    "compressionTests" ~: compressionTests,
    "hashTests" ~: hashTests,
-   "simpleChunkIO" ~: simpleChunkIO ]
+   "simpleChunkIO" ~: simpleChunkIO,
+   "poolTests" ~: poolTests ]
 
 lengthTests = test [
    "Empty" ~: 0 ~?= chunkLength c1,
@@ -83,20 +84,3 @@ c2 = stringToChunk "blob" "Hello"
 c3 = stringToChunk "blob" $ makePayload 1 256
 
 c4 = stringToChunk "blob" $ makePayload 2 (256*1024)
-
-hexHash :: Chunk -> String
-hexHash = Hash.toHex . chunkHash
-
-showZData :: Chunk -> String
-showZData chunk =
-   case chunkZData chunk of
-      Nothing -> "Not compressed\n"
-      Just z -> "Compressed:\n" ++ hexDump z
-
-makeLBSPayload :: Int -> Int -> L.ByteString
-makeLBSPayload num = L.pack . (map $ fromIntegral . fromEnum) . makePayload num
-makePayload :: Int -> Int -> String
-makePayload num len =
-   take len (prefix ++ makeWords num)
-   where
-      prefix = show num ++ " "

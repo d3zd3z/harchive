@@ -58,7 +58,7 @@ import Data.Binary.Get (getByteString)
 
 -- The hash result type is abstract.
 newtype Hash = Hash B.ByteString
-   deriving (Eq)
+   deriving (Eq, Ord)
 
 instance Show Hash where
    showsPrec _ h =
