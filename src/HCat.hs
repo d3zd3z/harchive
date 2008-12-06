@@ -12,10 +12,13 @@ import Database.HDBC.Sqlite3
 import DecodeSexp
 import Codec.Binary.Base64 (decode)
 
+import Auth
 import HexDump
 
 import Chunk
 import Chunk.IO
+
+import System.IO
 
 main :: IO ()
 main = do
@@ -23,6 +26,14 @@ main = do
    case args of
       -- ("show":files) -> mapM_ showFile files
       ["dbinfo"] -> dbInfo
+      ["auth", "init", secret] -> do
+	 action <- authInitiator secret
+	 success <- runAuthIO stdin stdout action
+	 putStrLn $ "Auth: " ++ show success
+      ["auth", "receive", secret] -> do
+	 action <- authRecipient secret
+	 success <- runAuthIO stdin stdout action
+	 putStrLn $ "Auth: " ++ show success
       _ -> do
 	 putStr $ "Usage: command args\n"
 

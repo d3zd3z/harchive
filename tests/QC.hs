@@ -4,6 +4,7 @@
 module Main where
 
 import PoolTest
+import AuthTest
 
 import TmpDir
 import Util
@@ -28,6 +29,7 @@ main = do
       exitWith (ExitFailure 1)
 
 tests = test [
+   "authTests" ~: authTests,
    "lengthTests" ~: lengthTests,
    "compressionTests" ~: compressionTests,
    "hashTests" ~: hashTests,

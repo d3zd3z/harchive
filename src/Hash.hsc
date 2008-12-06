@@ -36,7 +36,9 @@ module Hash (
    hashOf, hashOfIO,
    toHex, fromHex,
    toByteString,
-   byteStringToHash
+   byteStringToHash,
+
+   hashBlockLength
 )where
 
 import Data.ByteString.Internal (create, toForeignPtr)
@@ -93,6 +95,9 @@ instance Binary Hash where
 
 hashLength :: Int
 hashLength = (#const SHA_DIGEST_LENGTH)
+
+hashBlockLength :: Int
+hashBlockLength = (#const SHA_CBLOCK)
 
 ----------------------------------------------------------------------
 -- Lazily construct a hash from a lazy bytestream of data.

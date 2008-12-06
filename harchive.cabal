@@ -48,6 +48,7 @@ library
       Pool
       Pool.Local
       Pool.Memory
+      Auth
    other-modules:
       MBox
       Status
