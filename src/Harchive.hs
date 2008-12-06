@@ -114,8 +114,22 @@ runWalk :: ChunkReader p => Hash -> p -> IO ()
 runWalk hash pool = do
    chunk <- liftM fromJust $ poolReadChunk pool hash
    let info = decodeBackupInfo chunk
-   walker <- Tree.walk pool $ biHash info
-   showNodes walker
+   nodes <- Tree.walkLazy pool $ biHash info
+   forM_ nodes $ \op -> do
+      case op of
+	 TreeEOF -> printf "EOF\n"
+	 TreeEnter {} -> do
+	    printf "d %s\n" $ treeOpPath op
+	 TreeLeave {} -> do
+	    printf "u %s\n" $ treeOpPath op
+	 TreeLink {} -> do
+	    let attr = treeOpAttr op
+	    printf "l %s -> %s\n" (treeOpPath op)
+	       (justField attr "LINK" :: String)
+	 TreeReg {} -> do
+	    printf "- (%s) %s\n" (treeOpKind op) (treeOpPath op)
+	 TreeOther {} -> do
+	    printf "? %s\n" (treeOpPath op)
 
 showNodes :: IO TreeOp -> IO ()
 showNodes getOp = do

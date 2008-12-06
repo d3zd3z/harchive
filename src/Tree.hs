@@ -3,7 +3,7 @@
 ----------------------------------------------------------------------
 
 module Tree (
-   walk,
+   walk, walkLazy,
    TreeOp(..),
    module DecodeSexp
 ) where
@@ -17,6 +17,8 @@ import Data.Maybe (fromJust)
 import System.FilePath
 import Control.Monad.Reader
 import Control.Concurrent
+
+import System.IO.Unsafe
 
 -- Let's see what we can do.  Starting with the hash of a directory,
 -- let's recursively walk through it, printing the tree.  It's a
@@ -35,6 +37,22 @@ data TreeOp
 -- Note the assymetry of the root directory here.  The attributes of a
 -- directory are stored outside of that directory in the parent, so
 -- the root's attributes are stored in the backup record.
+
+walkLazy :: ChunkReader p => p -> Hash -> IO [TreeOp]
+-- Perform the walk, and return a list which will be evaluated lazily.
+-- The list never contains a TreeEOF, since the end of list is
+-- obvious.
+walkLazy pool hash = do
+   walker <- walk pool hash
+   loop walker
+   where
+      loop walker = do
+	 item <- walker
+	 case item of
+	    TreeEOF -> return []
+	    x -> do
+	       rest <- unsafeInterleaveIO $ loop walker
+	       return $ x : rest
 
 walk :: ChunkReader p => p -> Hash -> IO (IO TreeOp)
 walk pool hash = do
