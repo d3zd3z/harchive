@@ -8,13 +8,12 @@ import System.Environment (getArgs)
 
 import Chunk
 import Chunk.IO
-import DecodeSexp
 import Hash
 import Status
 import Pool
 import Pool.Local
 
-import qualified Tree
+import Tree
 
 import Control.Monad
 import Data.Maybe
@@ -109,11 +108,37 @@ showOne hash pool = do
    rootChunk <- liftM fromJust $ poolReadChunk pool (biHash info)
    liftIO $ mapM_ (printf "sexp = %s\n" . show) (decodeMultiChunk rootChunk)
 
+----------------------------------------------------------------------
+
 runWalk :: ChunkReader p => Hash -> p -> IO ()
 runWalk hash pool = do
    chunk <- liftM fromJust $ poolReadChunk pool hash
    let info = decodeBackupInfo chunk
-   Tree.walk pool $ biHash info
+   walker <- Tree.walk pool $ biHash info
+   showNodes walker
+
+showNodes :: IO TreeOp -> IO ()
+showNodes getOp = do
+   op <- getOp
+   case op of
+      TreeEOF -> printf "EOF\n"
+      TreeEnter {} -> do
+	 printf "d %s\n" $ treeOpPath op
+	 showNodes getOp
+      TreeLeave {} -> do
+	 printf "u %s\n" $ treeOpPath op
+	 showNodes getOp
+      TreeLink {} -> do
+	 let attr = treeOpAttr op
+	 printf "l %s -> %s\n" (treeOpPath op)
+	    (justField attr "LINK" :: String)
+	 showNodes getOp
+      TreeReg {} -> do
+	 printf "- (%s) %s\n" (treeOpKind op) (treeOpPath op)
+	 showNodes getOp
+      TreeOther {} -> do
+	 printf "? %s\n" (treeOpPath op)
+	 showNodes getOp
 
 ----------------------------------------------------------------------
 
