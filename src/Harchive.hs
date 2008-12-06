@@ -35,6 +35,7 @@ main = do
       ["list", path] -> withLocalPool path showBackups
       ["show", path, hash] -> withLocalPool path $ showOne (fromHex hash)
       ["walk", path, hash] -> withLocalPool path $ runWalk (fromHex hash)
+      ["hashes", path, hash] -> withLocalPool path $ runHashes (fromHex hash)
       _ ->
 	 ioError (userError usage)
 
@@ -131,28 +132,17 @@ runWalk hash pool = do
 	 TreeOther {} -> do
 	    printf "? %s\n" (treeOpPath op)
 
-showNodes :: IO TreeOp -> IO ()
-showNodes getOp = do
-   op <- getOp
-   case op of
-      TreeEOF -> printf "EOF\n"
-      TreeEnter {} -> do
-	 printf "d %s\n" $ treeOpPath op
-	 showNodes getOp
-      TreeLeave {} -> do
-	 printf "u %s\n" $ treeOpPath op
-	 showNodes getOp
-      TreeLink {} -> do
-	 let attr = treeOpAttr op
-	 printf "l %s -> %s\n" (treeOpPath op)
-	    (justField attr "LINK" :: String)
-	 showNodes getOp
-      TreeReg {} -> do
-	 printf "- (%s) %s\n" (treeOpKind op) (treeOpPath op)
-	 showNodes getOp
-      TreeOther {} -> do
-	 printf "? %s\n" (treeOpPath op)
-	 showNodes getOp
+----------------------------------------------------------------------
+
+runHashes :: ChunkReader p => Hash -> p -> IO ()
+runHashes hash pool = do
+   chunk <- liftM fromJust $ poolReadChunk pool hash
+   let info = decodeBackupInfo chunk
+   act hash
+   walkHashes pool (biHash info) act
+   where
+      act h = do
+	 putStrLn $ "Hash: " ++ show h
 
 ----------------------------------------------------------------------
 

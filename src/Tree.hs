@@ -4,6 +4,7 @@
 
 module Tree (
    walk, walkLazy,
+   walkHashes,
    TreeOp(..),
    module DecodeSexp
 ) where
@@ -13,12 +14,55 @@ import Hash
 import DecodeSexp
 import Pool
 
+import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString as B
 import Data.Maybe (fromJust)
 import System.FilePath
 import Control.Monad.Reader
 import Control.Concurrent
 
 import System.IO.Unsafe
+
+walkHashes :: ChunkReader p => p -> Hash -> (Hash -> IO ()) -> IO ()
+-- |Walk through all of the hashes of the chunks involved in a
+-- particular backup.  Reads only the data from the pool necessary to
+-- determine all involved data (directories, and indirect blocks).
+-- Calls 'act' on each hash involved.
+walkHashes pool rootHash act = do
+   act rootHash
+   rootChunk_ <- poolReadChunk pool rootHash
+   let rootChunk = fromJust rootChunk_
+   case chunkKind rootChunk of
+      "dir " -> subDir rootChunk
+      ['d','i','r',n] | n >= '0' && n <= '9' -> do
+	 mapM_ (\h -> walkHashes pool h act)
+	    (indirectHashes $ chunkData rootChunk)
+      k -> error $ "Implement walking for: " ++ k
+
+   where
+      subDir :: Chunk -> IO ()
+      -- Iterate through the contents of a directory.
+      subDir chunk = forM_ (decodeMultiChunk chunk) $ \info -> do
+	 case attrKind info of
+	    "DIR" ->
+	       walkHashes pool (justField info "HASH") act
+	    "REG" ->
+	       regularFile (justField info "HASH")
+	    _ -> return ()
+
+      regularFile :: Hash -> IO ()
+      -- Iterate over a regular file.
+      regularFile hash = do
+	 act hash
+	 kind_ <- poolChunkKind pool hash
+	 let kind = fromJust kind_
+	 case kind of
+	    "blob" -> return ()
+	    ['i','n','d',n] | n >= '0' && n <= '9' -> do
+	       payload_ <- poolReadChunk pool hash
+	       let payload = fromJust payload_
+	       mapM_ regularFile (indirectHashes $ chunkData payload)
+	    k -> error $ "Implement walking for: " ++ k
 
 -- Let's see what we can do.  Starting with the hash of a directory,
 -- let's recursively walk through it, printing the tree.  It's a
@@ -89,3 +133,16 @@ walkReg :: ChunkReader p => p -> MVar TreeOp -> FilePath -> Attr -> IO ()
 walkReg pool opBox path info = do
    kind <- liftM fromJust $ poolChunkKind pool (justField info "HASH")
    putMVar opBox $ TreeReg path info kind
+
+----------------------------------------------------------------------
+
+indirectHashes :: L.ByteString -> [Hash]
+-- Break a chunk of data consisting of hashes into chunk-sized pieces,
+-- returning them in a list.
+indirectHashes l | L.length l == 0 = []
+indirectHashes l | L.length l < 20 =
+   error "Indirect block is not a multiple of 20 bytes"
+indirectHashes l = byteStringToHash x : indirectHashes xs
+   where
+      (xl, xs) = L.splitAt 20 l
+      x = B.concat $ L.toChunks xl
