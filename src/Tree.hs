@@ -1,4 +1,3 @@
-{-# LANGUAGE Rank2Types #-}
 ----------------------------------------------------------------------
 -- Directory Trees.
 ----------------------------------------------------------------------
@@ -21,37 +20,33 @@ import Control.Monad.Reader
 -- let's recursively walk through it, printing the tree.  It's a
 -- start.
 
-type PoolIO a = forall p. ChunkReader p => ReaderT p IO a
-
 walk :: ChunkReader p => p -> Hash -> IO ()
-walk pool hash = runReaderT (doWalk "" hash) pool
+walk pool hash = doWalk pool "" hash
 
-doWalk :: FilePath -> Hash -> PoolIO ()
-doWalk base hash = do
-   pool <- ask
-   chunk <- liftM fromJust $ liftIO $ poolReadChunk pool hash
+doWalk :: ChunkReader p => p -> FilePath -> Hash -> IO ()
+doWalk pool base hash = do
+   chunk <- liftM fromJust $ poolReadChunk pool hash
    case chunkKind chunk of
-      "dir " -> walkDir base chunk
+      "dir " -> walkDir pool base chunk
       k -> error $ "Implement walking for: " ++ k
 
-walkDir :: FilePath -> Chunk -> PoolIO ()
-walkDir base chunk = do
+walkDir :: ChunkReader p => p -> FilePath -> Chunk -> IO ()
+walkDir pool base chunk = do
    forM_ (decodeMultiChunk chunk) $ \info -> do
       let fullName = base </> attrName info
       case attrKind info of
 	 "DIR" -> do
-	    liftIO $ printf "d %s\n" fullName
-	    doWalk fullName (justField info "HASH")
-	    liftIO $ printf "u %s\n" fullName
+	    printf "d %s\n" fullName
+	    doWalk pool fullName (justField info "HASH")
+	    printf "u %s\n" fullName
 	 "REG" -> do
-	    liftIO $ printf "- %s\n" fullName
-	    walkReg fullName info
-	 "LNK" -> liftIO $
+	    printf "- %s\n" fullName
+	    walkReg pool fullName info
+	 "LNK" ->
 	    printf "l %s -> %s\n" fullName (justField info "LINK" :: String)
-	 x -> liftIO $ printf "? %s (%s)\n" fullName x
+	 x -> printf "? %s (%s)\n" fullName x
 
-walkReg :: FilePath -> Attr -> PoolIO ()
-walkReg _path info = do
-   pool <- ask
-   kind <- liftM fromJust $ liftIO $ poolChunkKind pool (justField info "HASH")
-   liftIO $ printf "  (kind = \"%s\")\n" kind
+walkReg :: ChunkReader p => p -> FilePath -> Attr -> IO ()
+walkReg pool _path info = do
+   kind <- liftM fromJust $ poolChunkKind pool (justField info "HASH")
+   printf "  (kind = \"%s\")\n" kind
