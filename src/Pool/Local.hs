@@ -10,13 +10,10 @@ module Pool.Local (
 ) where
 
 import Hash
-import HexDump
 import Chunk
 import Chunk.IO
 import Pool
-
-import qualified Database.HDBC as SQL
-import qualified Database.HDBC.Sqlite3 as SQL
+import Pool.Local.DB
 
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -25,12 +22,8 @@ import Numeric
 import System.Directory
 import System.FilePath
 
-import qualified Data.ByteString.Lazy as L
-import qualified Data.ByteString as B
-
-import Control.Exception (bracket, assert)
+import Control.Exception (assert)
 import Control.Concurrent
-import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
 import Control.Monad.State.Strict
 
@@ -42,7 +35,7 @@ withLocalPool :: FilePath -> (LocalPool -> IO a) -> IO a
 withLocalPool path action = do
    validatePath path
    let dbName = path </> databaseName
-   bracket (SQL.connectSqlite3 dbName) SQL.disconnect $ \db -> do
+   withDatabase dbName $ \db -> do
       setupSchema db
       storedLimit <- queryLimit db
       cf <- scanDataFiles path db
@@ -73,8 +66,8 @@ data PoolState = PoolState {
    basePath :: String,
    -- Since we aren't dynamically choosing different databases,
    -- there's no need to deal with polymorphism here.
-   -- connection :: forall a. SQL.IConnection a => a
-   connection :: SQL.Connection,
+   -- connection :: forall a. IConnection a => a
+   connection :: DB,
    -- The currently accessible chunkfiles, indexed by cfile number.
    chunkFiles :: IntMap ChunkFile,
    -- Last Chunk we looked up in the database.
@@ -147,11 +140,11 @@ localPoolWriteChunk pool chunk = do
 	    query0 ("insert into hashes values (" ++
 	       hashToSql (chunkHash chunk) ++
 	       ", ?, ?, ?)")
-	       [SQL.toSql $ chunkKind chunk,
-		  SQL.toSql num, SQL.toSql offset]
+	       [toSql $ chunkKind chunk,
+		  toSql num, toSql offset]
 	    newSize <- liftIO $ chunkFileSize cfile
 	    query0 "insert or replace into chunk_files values (?,?)"
-	       [SQL.toSql num, SQL.toSql newSize]
+	       [toSql num, toSql newSize]
 
 localPoolFlush :: LocalPool -> IO ()
 -- Make sure all data is written out.
@@ -164,7 +157,7 @@ localPoolFlush pool = do
       mapM_ (\c -> liftIO $ chunkClose c) cfsChunks
 
       db <- gets connection
-      liftIO $ SQL.commit db
+      liftIO $ commit db
 
 getPoolLimit :: LocalPool -> IO Int
 getPoolLimit pool = do
@@ -177,7 +170,7 @@ setPoolLimit pool limit = do
       modify $ \state -> state { chunkFileLimit = limit }
       query0 "delete from config where key = 'file_limit'" []
       query0 "insert into config values('file_limit',?)"
-	 [SQL.toSql limit]
+	 [toSql limit]
 
 prepareWrite :: Int -> AtomicPoolOp (Int, ChunkFile)
 -- Determine (or create) a chunkfile appropriate for writing a chunk
@@ -239,45 +232,45 @@ lookupHash hash = do
 
 -- These are a little tedious, since we have to spell out the types.
 
-query0 :: String -> [SQL.SqlValue] -> AtomicPoolOp ()
+query0 :: String -> [SqlValue] -> AtomicPoolOp ()
 -- Perform a query expecting no results.
 query0 query values = do
    db <- gets connection
-   rows <- liftIO $ SQL.quickQuery' db query values
+   rows <- liftIO $ quickQuery' db query values
    assert (length rows == 0) $
       return ()
 
-query1 :: (SQL.SqlType a) => String -> [SQL.SqlValue] -> AtomicPoolOp [a]
+query1 :: (SqlType a) => String -> [SqlValue] -> AtomicPoolOp [a]
 -- Perform a query where each row expects a single column result.
 query1 = queryN convert1
    where
-      convert1 [a] = SQL.fromSql a
+      convert1 [a] = fromSql a
       convert1 _ = error "Expecting 1 column in result"
 
 {-
-query2 :: (SQL.SqlType a, SQL.SqlType b) =>
-   String -> [SQL.SqlValue] -> AtomicPoolOp [(a, b)]
+query2 :: (SqlType a, SqlType b) =>
+   String -> [SqlValue] -> AtomicPoolOp [(a, b)]
 -- Perform a query where each row expects two columns.
 query2 = queryN convert2
    where
-      convert2 [a, b] = (SQL.fromSql a, SQL.fromSql b)
+      convert2 [a, b] = (fromSql a, fromSql b)
       convert2 _ = error "Expecting 2 columns in result"
 -}
 
-query3 :: (SQL.SqlType a, SQL.SqlType b, SQL.SqlType c) =>
-   String -> [SQL.SqlValue] -> AtomicPoolOp [(a, b, c)]
+query3 :: (SqlType a, SqlType b, SqlType c) =>
+   String -> [SqlValue] -> AtomicPoolOp [(a, b, c)]
 -- Perform a query where each row expects three columns.
 query3 = queryN convert3
    where
-      convert3 [a, b, c] = (SQL.fromSql a, SQL.fromSql b, SQL.fromSql c)
+      convert3 [a, b, c] = (fromSql a, fromSql b, fromSql c)
       convert3 _ = error "Expecting 3 columns in result"
 
-queryN :: ([SQL.SqlValue] -> a) -> String -> [SQL.SqlValue] -> AtomicPoolOp [a]
+queryN :: ([SqlValue] -> a) -> String -> [SqlValue] -> AtomicPoolOp [a]
 -- Perform a query where the given function is applied over each
 -- resulting row to produce the result.
 queryN convert query values = do
    db <- gets connection
-   rows <- liftIO $ SQL.quickQuery' db query values
+   rows <- liftIO $ quickQuery' db query values
    return $ map convert rows
 
 {-
@@ -324,7 +317,7 @@ noDotty :: [FilePath] -> [FilePath]
 noDotty = filter $ \item -> item /= "." && item /= ".."
 
 ----------------------------------------------------------------------
-scanDataFiles :: FilePath -> SQL.Connection -> IO (IntMap ChunkFile)
+scanDataFiles :: FilePath -> DB -> IO (IntMap ChunkFile)
 -- Scan the data directory for data files, verifying that they are in
 -- the database, and perform recovery of the chunk information into
 -- the database.  Returns the chunkfile map.
@@ -390,98 +383,61 @@ dataFileName base index =
 
 ----------------------------------------------------------------------
 
-queryCfiles :: SQL.Connection -> IO [Int]
+queryCfiles :: DB -> IO [Int]
 -- Retrieve the sizes of each chunk file from the database.  Verifies
 -- that the files are present and in order.
 queryCfiles db = do
-   rows <- SQL.quickQuery' db
+   rows <- quickQuery' db
       "select num, size from chunk_files order by num" []
    return $ flattenSizes 0 rows
    where
-      flattenSizes :: Int -> [[SQL.SqlValue]] -> [Int]
+      flattenSizes :: Int -> [[SqlValue]] -> [Int]
       -- ensure that the query result from the database is sane.
       flattenSizes _ [] = []
       flattenSizes n ([n2, size]:xs) =
 	 if n == n2'
-	    then SQL.fromSql size : flattenSizes (n+1) xs
+	    then fromSql size : flattenSizes (n+1) xs
 	    else error "Unexpected sequence in chunk_files table"
-	 where n2' = SQL.fromSql n2
+	 where n2' = fromSql n2
       flattenSizes _ _ = error "Unexpected result from chunk_files query"
 
-queryLimit :: SQL.Connection -> IO (Maybe Int)
+queryLimit :: DB -> IO (Maybe Int)
 -- Query the database for a config entry that might define the size
 -- limit of the pool files, and return it if found.
 queryLimit db = do
-   rows <- SQL.quickQuery' db
+   rows <- quickQuery' db
       "select value from config where key = 'file_limit'" []
-   return $ (fmap SQL.fromSql) $ (fmap head) $ maybeOne rows
+   return $ (fmap fromSql) $ (fmap head) $ maybeOne rows
 
 ----------------------------------------------------------------------
-setupSchema :: SQL.Connection -> IO ()
+setupSchema :: DB -> IO ()
 -- Check the schema of this database by trying to query for the config
 -- value.
 setupSchema db = do
-   rows <- SQL.handleSql (const $ return Nothing) $ do
-      r <- SQL.quickQuery' db
+   rows <- handleSql (const $ return Nothing) $ do
+      r <- quickQuery' db
 	 "select value from config where key = 'schema_hash'" []
       return $ Just r
    case rows of
       Nothing -> do
-	 putStrLn "Creating schema"
+	 -- putStrLn "Creating schema"
 	 createSchema db
       Just [] ->
 	 -- Unexpected case.  Database has the row, but no schema_hash
 	 -- added to it.  Probably some other database present.
 	 fail "The database file appears unexpected"
       Just ((sHash:_):_) -> do
-	 let hash = byteStringToHash $ SQL.fromSql $ sHash
+	 let hash = byteStringToHash $ fromSql $ sHash
 	 if hash == schemaHash
 	    then return ()
 	    else fail "Schema hash mismatch, TODO: implement upgrade"
       _ -> fail "Unexpected query result"
 
-createSchema :: SQL.Connection -> IO ()
+createSchema :: DB -> IO ()
 -- Create the initial database schema, asuming a blank slate.
 createSchema db = do
    forM_ schema $ \item -> do
-      SQL.quickQuery db item []
-   SQL.quickQuery db ("insert into config values('schema_hash'," ++
+      quickQuery db item []
+   quickQuery db ("insert into config values('schema_hash'," ++
       hashToSql schemaHash ++ ")") []
-   SQL.commit db
-
-blobToSql :: B.ByteString -> String
-blobToSql = ("X'"++) . (++"'") . concat . map (padHex 2) . B.unpack
-
-hashToSql :: Hash -> String
-hashToSql = blobToSql . toByteString
-
-----------------------------------------------------------------------
--- TODO: Move the database stuff to a separate module possibly a
--- separate monad.
--- TODO: The config schema needs to have a unique key.
-schema :: [String]
-schema = [
-   -- The schema needs to match the ldump schema, exactly to avoid schema mismatches.
-   "create table config (key text, value text)",
-   "create table devmap (uuid text unique, dev integer primary key)",
-   "create table dircache (pdev integer, pino integer,\n" ++
-      "\t\tino integer, ctime integer, hash blob,\n" ++
-      "\t\texpire integer)",
-   "create index dircache_devino on dircache(pdev, pino)",
-   "create table hashes(hash blob unique, kind text, file integer,\n" ++
-      "\t\toffset integer)",
-   "create index hashes_hash on hashes(hash)",
-   "create table chunk_files(num integer unique primary key,\n" ++
-      "\t\tsize integer)",
-   "create table backups(hash blob)",
-   "create trigger backup_trigger after insert on hashes\n" ++
-      "\t\twhen new.kind = 'back'\n" ++
-      "\tbegin\n" ++
-      "\t\tinsert into backups values(new.hash);\n" ++
-      "\tend" ]
-
-schemaHash :: Hash
-schemaHash = hashOf combined
-   where
-      combined = L.pack . (map $ fromIntegral . fromEnum) $ combinedString
-      combinedString = intercalate ";" (schema ++ [""])
+   commit db

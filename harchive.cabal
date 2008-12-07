@@ -47,6 +47,7 @@ library
       Chunk.IO
       Pool
       Pool.Local
+      Pool.Local.DB
       Pool.Memory
       Auth
    other-modules:
