@@ -26,13 +26,15 @@ import Test.HUnit
 import Control.Monad
 import Data.Maybe
 
--- import System.Cmd (system)
+import System.Cmd (system)
 import System.Directory (getDirectoryContents)
+import System.Exit
 
 poolTests = test [
    "Memory Pool" ~: poolTestMemory,
    "Local Pool" ~: poolTestLocal,
-   "Multi Pool Files" ~: multiFileTest ]
+   "Multi Pool Files" ~: multiFileTest,
+   "Recover Single Pool File" ~: recoverSingleFile ]
 
 poolTestMemory :: IO ()
 poolTestMemory = withMemoryPool exercisePool
@@ -87,6 +89,30 @@ multiFileTest = do
 
    where testLimit = 100 * 1024
 
+recoverSingleFile :: IO ()
+-- Test simple recovery of an existing database file.
+recoverSingleFile = do
+   withTmpDir $ \tmpDir -> do
+      let chunks = randomChunks (1024, 32768) 200
+      let write index =
+	    withLocalPool tmpDir $ \pool -> do
+	       poolWriteChunk pool $ chunks !! index
+	       poolFlush pool
+
+      write 0
+      stashDatabase tmpDir
+      write 1
+      replaceDatabase tmpDir
+      write 2
+
+      withLocalPool tmpDir $ \pool -> do
+	 forM_ (take 3 chunks) $ \chunk -> do
+	    let hash = chunkHash chunk
+	    c2 <- poolReadChunk pool hash
+	    maybe (assert "No chunk") (const $ return ()) c2
+	    let c2' = fromJust c2
+	    hash @?= chunkHash c2'
+
 exercisePool :: (ChunkReaderWriter p) => p -> IO ()
 exercisePool pool = do
    let chunks = take 50 $ randomChunks (1024, 32768) 1
@@ -122,6 +148,20 @@ exercisePool pool = do
 
       c22 <- poolReadChunk pool hash2
       maybe (return ()) (const $ assert "Bad chunk found") c22
+
+-- To simulate partial writes, we make a copy of the database file,
+-- and put it back after performing some more writing.
+stashDatabase :: FilePath -> IO ()
+-- Make a copy of the database file in the given directory.
+stashDatabase dirName = do
+   status <- system $ "cp " ++ (dirName </> "pool-info.sqlite3") ++ " " ++
+      (dirName </> "pool-info.backup")
+   status @=? ExitSuccess
+
+replaceDatabase dirName = do
+   status <- system $ "cp " ++ (dirName </> "pool-info.backup") ++ " " ++
+      (dirName </> "pool-info.sqlite3")
+   status @=? ExitSuccess
 
 tweakHash :: Hash -> Hash
 -- Change a single bit in the hash to make a hash that is likely to to
