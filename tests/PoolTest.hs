@@ -24,7 +24,7 @@ poolTests = test [
 poolTest1 :: IO ()
 poolTest1 = withMemoryPool exercisePool
 
-exercisePool :: (ChunkWriter p, ChunkReader p) => p -> IO ()
+exercisePool :: (ChunkReaderWriter p) => p -> IO ()
 exercisePool pool = do
    let chunks = take 50 $ randomChunks (1024, 32768) 1
 

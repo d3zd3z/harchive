@@ -64,3 +64,5 @@ instance ChunkWriter MemoryPool where
       -- well.
       let cs' = Map.insert hash chunk cs
       put $ state { chunks = cs' }
+
+instance ChunkReaderWriter MemoryPool where {}

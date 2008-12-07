@@ -6,6 +6,7 @@ module Pool (
    ChunkQuerier(..),
    ChunkReader(..),
    ChunkWriter(..),
+   ChunkReaderWriter,
    emptyPool
 ) where
 
@@ -26,6 +27,11 @@ class ChunkQuerier a where
 -- |Something that can read the payload of the chunks in the store.
 class (ChunkQuerier a) => ChunkReader a where
    poolReadChunk :: a -> Hash -> IO (Maybe Chunk)
+
+-- |A class that can perform both reading and writing.  I don't
+-- believe this is valid Haskell98, but works without enabling any
+-- extensions in GHC.
+class (ChunkReader a, ChunkWriter a) => ChunkReaderWriter a where {}
 
 -- |Something that can store chunks.
 class (ChunkQuerier a) => ChunkWriter a where
