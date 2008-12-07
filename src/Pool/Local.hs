@@ -348,25 +348,24 @@ queryCfiles :: DB -> IO [Int]
 -- Retrieve the sizes of each chunk file from the database.  Verifies
 -- that the files are present and in order.
 queryCfiles db = do
-   rows <- quickQuery' db
+   rows <- query2 db
       "select num, size from chunk_files order by num" []
    return $ flattenSizes 0 rows
    where
-      flattenSizes :: Int -> [[SqlValue]] -> [Int]
+      flattenSizes :: Int -> [(Int, Int)] -> [Int]
       -- ensure that the query result from the database is sane.
       flattenSizes _ [] = []
-      flattenSizes n ([n2, size]:xs) =
+      flattenSizes n ((n2, size):xs) =
 	 if n == n2'
-	    then fromSql size : flattenSizes (n+1) xs
+	    then size : flattenSizes (n+1) xs
 	    else error "Unexpected sequence in chunk_files table"
-	 where n2' = fromSql n2
-      flattenSizes _ _ = error "Unexpected result from chunk_files query"
+	 where n2' = n2
 
 queryLimit :: DB -> IO (Maybe Int)
 -- Query the database for a config entry that might define the size
 -- limit of the pool files, and return it if found.
 queryLimit db = do
-   rows <- quickQuery' db
+   rows <- query1 db
       "select value from config where key = 'file_limit'" []
-   return $ (fmap fromSql) $ (fmap head) $ maybeOne rows
+   return $ maybeOne rows
 

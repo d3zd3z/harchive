@@ -10,18 +10,14 @@ module Pool.Local.DB (
 
    query0, query1, query2, query3, queryN,
 
-   -- To be removed.
-   SqlValue, quickQuery', SqlType,
-
-   schema, schemaHash,
    blobToSql, hashToSql
 ) where
 
 import HexDump (padHex)
 import Hash
 
-import Database.HDBC as Sql
-import Database.HDBC.Sqlite3 as Sql
+import Database.HDBC
+import Database.HDBC.Sqlite3
 
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
@@ -31,7 +27,7 @@ import Control.Monad (forM_)
 import Data.List (intercalate)
 
 -- Export the Connection type.
-type DB = Sql.Connection
+type DB = Connection
 
 blobToSql :: B.ByteString -> String
 blobToSql = ("X'"++) . (++"'") . concat . map (padHex 2) . B.unpack
