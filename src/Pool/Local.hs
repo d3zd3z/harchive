@@ -22,7 +22,6 @@ import Numeric
 import System.Directory
 import System.FilePath
 
-import Control.Exception (assert)
 import Control.Concurrent
 import Data.Maybe (fromMaybe)
 import Control.Monad.State.Strict
@@ -101,7 +100,8 @@ instance ChunkReaderWriter LocalPool where {}
 localPoolGetBackups :: LocalPool -> IO [Hash]
 localPoolGetBackups pool = do
    atomicLift pool $ do
-      bs <- query1 "select hash from backups" []
+      db <- gets connection
+      bs <- liftIO $ query1 db "select hash from backups" []
       return $ map byteStringToHash bs
 
 -- Reads a chunk from the pool, if present.
@@ -137,13 +137,14 @@ localPoolWriteChunk pool chunk = do
 	 writeIt = do
 	    (num, cfile) <- prepareWrite $ chunkStoreEstimate chunk
 	    offset <- liftIO $ chunkWrite cfile chunk
-	    query0 ("insert into hashes values (" ++
+	    db <- gets connection
+	    liftIO $ query0 db ("insert into hashes values (" ++
 	       hashToSql (chunkHash chunk) ++
 	       ", ?, ?, ?)")
 	       [toSql $ chunkKind chunk,
 		  toSql num, toSql offset]
 	    newSize <- liftIO $ chunkFileSize cfile
-	    query0 "insert or replace into chunk_files values (?,?)"
+	    liftIO $ query0 db "insert or replace into chunk_files values (?,?)"
 	       [toSql num, toSql newSize]
 
 localPoolFlush :: LocalPool -> IO ()
@@ -168,9 +169,11 @@ setPoolLimit :: LocalPool -> Int -> IO ()
 setPoolLimit pool limit = do
    atomicLift pool $ do
       modify $ \state -> state { chunkFileLimit = limit }
-      query0 "delete from config where key = 'file_limit'" []
-      query0 "insert into config values('file_limit',?)"
-	 [toSql limit]
+      db <- gets connection
+      liftIO $ do
+	 query0 db "delete from config where key = 'file_limit'" []
+	 query0 db "insert into config values('file_limit',?)"
+	    [toSql limit]
 
 prepareWrite :: Int -> AtomicPoolOp (Int, ChunkFile)
 -- Determine (or create) a chunkfile appropriate for writing a chunk
@@ -221,57 +224,15 @@ lookupHash hash = do
       (CacheHit h pos) | h == hash -> return $ Just pos
       (CacheMiss h) | h == hash -> return Nothing
       _ -> do
-	 place <- query3 ("select file, offset, kind from hashes \
-		     \ where hash = " ++ hashToSql hash) []
+	 db <- gets connection
+	 place <- liftIO $ query3 db ("select file, offset, kind from hashes " ++
+	    "where hash = " ++ hashToSql hash) []
 	 let place2 = maybeOne place
 	 let newCache = case place2 of
 	       Nothing -> CacheMiss hash
 	       Just pos -> CacheHit hash pos
 	 put $ state { lastCached = newCache }
 	 return place2
-
--- These are a little tedious, since we have to spell out the types.
-
-query0 :: String -> [SqlValue] -> AtomicPoolOp ()
--- Perform a query expecting no results.
-query0 query values = do
-   db <- gets connection
-   rows <- liftIO $ quickQuery' db query values
-   assert (length rows == 0) $
-      return ()
-
-query1 :: (SqlType a) => String -> [SqlValue] -> AtomicPoolOp [a]
--- Perform a query where each row expects a single column result.
-query1 = queryN convert1
-   where
-      convert1 [a] = fromSql a
-      convert1 _ = error "Expecting 1 column in result"
-
-{-
-query2 :: (SqlType a, SqlType b) =>
-   String -> [SqlValue] -> AtomicPoolOp [(a, b)]
--- Perform a query where each row expects two columns.
-query2 = queryN convert2
-   where
-      convert2 [a, b] = (fromSql a, fromSql b)
-      convert2 _ = error "Expecting 2 columns in result"
--}
-
-query3 :: (SqlType a, SqlType b, SqlType c) =>
-   String -> [SqlValue] -> AtomicPoolOp [(a, b, c)]
--- Perform a query where each row expects three columns.
-query3 = queryN convert3
-   where
-      convert3 [a, b, c] = (fromSql a, fromSql b, fromSql c)
-      convert3 _ = error "Expecting 3 columns in result"
-
-queryN :: ([SqlValue] -> a) -> String -> [SqlValue] -> AtomicPoolOp [a]
--- Perform a query where the given function is applied over each
--- resulting row to produce the result.
-queryN convert query values = do
-   db <- gets connection
-   rows <- liftIO $ quickQuery' db query values
-   return $ map convert rows
 
 {-
 onlyOne :: [a] -> a

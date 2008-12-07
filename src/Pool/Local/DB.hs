@@ -7,6 +7,8 @@ module Pool.Local.DB (
    withDatabase,
    commit,
 
+   query0, query1, query2, query3, queryN,
+
    -- To be removed.
    SqlValue, quickQuery', SqlType,
    quickQuery, handleSql,
@@ -24,7 +26,7 @@ import Database.HDBC.Sqlite3 as Sql
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 
-import Control.Exception (bracket)
+import Control.Exception (assert, bracket)
 import Data.List (intercalate)
 
 -- Export the Connection type.
@@ -41,6 +43,47 @@ withDatabase :: FilePath -> (DB -> IO a) -> IO a
 -- Evaluate 'action' with an SQLite3 database opened.
 withDatabase fileName action =
    bracket (connectSqlite3 fileName) disconnect action
+
+----------------------------------------------------------------------
+query0 :: DB -> String -> [SqlValue] -> IO ()
+-- Perform a query expecting no results.
+query0 db query values = do
+   rows <- quickQuery' db query values
+   assert (length rows == 0) $
+      return ()
+
+query1 :: (SqlType a) => DB -> String -> [SqlValue] -> IO [a]
+-- Perform a query where each row expects a single column result.
+query1 db query values = do
+   queryN db convert1 query values
+   where
+      convert1 [a] = fromSql a
+      convert1 _ = error "Expecting 1 column in result"
+
+query2 :: (SqlType a, SqlType b) =>
+   DB -> String -> [SqlValue] -> IO [(a, b)]
+-- Perform a query where each row expects two columns.
+query2 db query values = do
+   queryN db convert2 query values
+   where
+      convert2 [a, b] = (fromSql a, fromSql b)
+      convert2 _ = error "Expecting 2 columns in result"
+
+query3 :: (SqlType a, SqlType b, SqlType c) =>
+   DB -> String -> [SqlValue] -> IO [(a, b, c)]
+-- Perform a query where each row expects three columns.
+query3 db query values = do
+   queryN db convert3 query values
+   where
+      convert3 [a, b, c] = (fromSql a, fromSql b, fromSql c)
+      convert3 _ = error "Expecting 3 columns in result"
+
+queryN :: DB -> ([SqlValue] -> a) -> String -> [SqlValue] -> IO [a]
+-- Generalized query with row conversion.  Calls the conversion
+-- function on each row of the result.
+queryN db convert query values = do
+   rows <- quickQuery' db query values
+   return $ map convert rows
 
 ----------------------------------------------------------------------
 
