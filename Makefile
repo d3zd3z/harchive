@@ -17,7 +17,7 @@ unregister: .setup-config .force
 
 sure: install
 	${MAKE} -C tests
-	./tests/qc
+	./tests/tests
 
 clean:
 	runhaskell Setup.hs clean

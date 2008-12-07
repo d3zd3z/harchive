@@ -2,7 +2,9 @@
 -- Testing of storage pools.
 ----------------------------------------------------------------------
 
-module PoolTest where
+module PoolTest (
+   poolTests
+) where
 
 import Chunk
 import Hash
@@ -16,13 +18,14 @@ import Test.HUnit
 import Control.Monad
 import Data.Maybe
 
-import qualified System.IO.Error as E
-
 poolTests = test [
    "Pool 1" ~: poolTest1 ]
 
 poolTest1 :: IO ()
-poolTest1 = withMemoryPool $ \pool -> do
+poolTest1 = withMemoryPool exercisePool
+
+exercisePool :: (ChunkWriter p, ChunkReader p) => p -> IO ()
+exercisePool pool = do
    let chunks = take 50 $ randomChunks (1024, 32768) 1
 
    forM_ chunks $ poolWriteChunk pool
@@ -65,10 +68,3 @@ tweakHash = byteStringToHash . B.pack . tweak . B.unpack . toByteString
       tweak (x:xs) = (x `xor` 1) : xs
       tweak [] = []
 
-mustError :: IO a -> IO ()
--- Perform the action given, and assure that it fails.
-mustError action = do
-   result <- E.try action
-   either (const $ return ())
-      (const $ fail "mustError!")
-      result

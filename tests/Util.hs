@@ -2,7 +2,16 @@
 -- Test utilities.
 ----------------------------------------------------------------------
 
-module Util where
+module Util (
+   randomChunks,
+   hexHash,
+   makePayload,
+   mustError,
+
+   -- Unknown utility.
+   showZData,
+   makeLBSPayload
+) where
 
 import Hash
 import Chunk
@@ -11,6 +20,8 @@ import GenWords
 
 import qualified Data.ByteString.Lazy as L
 import System.Random
+
+import qualified System.IO.Error as E
 
 randomChunks :: (Int, Int) -> Int -> [Chunk]
 -- Generate a sequence of random chunks, seeding the random sequence
@@ -39,3 +50,11 @@ makePayload :: Int -> Int -> String
 makePayload num len =
    take len (prefix ++ makeWords num)
    where prefix = show num ++ " "
+
+mustError :: IO a -> IO ()
+-- Perform the action given, and assure that it fails.
+mustError action = do
+   result <- E.try action
+   either (const $ return ())
+      (const $ fail "mustError!")
+      result

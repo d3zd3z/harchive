@@ -6,7 +6,7 @@
 # installed locally.
 
 compiled: .force
-	ghc --make QC.hs -o qc -Wall -fno-warn-missing-signatures
+	ghc --make Main.hs -o tests -Wall -fno-warn-missing-signatures
 
 genwords: .force
 	ghc --make GenWords.hs -o genwords

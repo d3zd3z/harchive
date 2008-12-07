@@ -4,6 +4,6 @@ dist
 pool-data-*.data
 *.hi
 *.o
-tests/qc
+tests/tests
 tags
 TAGS
