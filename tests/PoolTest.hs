@@ -13,7 +13,7 @@ import Util
 import Pool.Memory
 import Pool.Local
 
-import Text.Printf
+-- import Text.Printf
 
 import System.Posix (getFileStatus, fileSize)
 import System.FilePath ((</>))
@@ -26,7 +26,7 @@ import Test.HUnit
 import Control.Monad
 import Data.Maybe
 
-import System.Cmd (system)
+-- import System.Cmd (system)
 import System.Directory (getDirectoryContents)
 
 poolTests = test [
@@ -45,19 +45,20 @@ poolTestLocal = do
 multiFileTest :: IO ()
 multiFileTest = do
    withTmpDir $ \tmpDir -> do
+      let chunks = take 50 $ randomChunks (1024, 32768) 100
+
       withLocalPool tmpDir $ \pool -> do
 	 setPoolLimit pool testLimit
 	 limit <- getPoolLimit pool
+	 limit @=? testLimit
 	 poolFlush pool
       withLocalPool tmpDir $ \pool -> do
 	 limit <- getPoolLimit pool
-	 printf "\nLimit: %d\n" limit
 	 limit @=? testLimit
 
 	 -- Make sure we can set it again.
 	 setPoolLimit pool testLimit
 
-	 let chunks = take 50 $ randomChunks (1024, 32768) 100
 
 	 forM_ chunks $ poolWriteChunk pool
 	 poolFlush pool
@@ -68,12 +69,22 @@ multiFileTest = do
       (length names > 1) @? "Must be more than one pool file"
       forM_ names $ \name -> do
 	 let fullName = tmpDir </> name
-	 stat <- getFileStatus $ tmpDir </> name
+	 stat <- getFileStatus $ fullName
 	 let size = fromIntegral (fileSize stat) :: Int
 	 (size <= testLimit) @? "File size exceeds test limit: " ++ show size
-      printf "\nListing (%s):\n" (show names)
-      system $ "ls -l " ++ tmpDir
-      return ()
+      -- printf "\nListing (%s):\n" (show names)
+      -- system $ "ls -l " ++ tmpDir
+      -- return ()
+
+      -- Make sure we can read the chunks back.
+      withLocalPool tmpDir $ \pool -> do
+	 forM_ chunks $ \chunk -> do
+	    let hash = chunkHash chunk
+	    c2 <- poolReadChunk pool hash
+	    maybe (assert "No chunk") (const $ return ()) c2
+	    let c2' = fromJust c2
+	    hash @?= chunkHash c2'
+
    where testLimit = 100 * 1024
 
 exercisePool :: (ChunkReaderWriter p) => p -> IO ()

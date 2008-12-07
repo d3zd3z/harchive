@@ -70,13 +70,21 @@ chunkWrite (ChunkFile cfs) chunk = do
       return $ (state { handleState = hstate'' }, pos )
 
 chunkFileSize :: ChunkFile -> IO Int
--- |Determine the size of the file.  The file is closed at the end.
+-- |Determine the size of the file.
 chunkFileSize (ChunkFile cfs) = do
-   modifyMVar cfs $ \state -> do
-      (hstate', handle) <- getReadable (csPath state) (handleState state)
-      size <- hFileSize handle
-      hstate'' <- cfClose hstate'
-      return $ (state { handleState = hstate'' }, fromIntegral size)
+   withMVar cfs $ \state -> do
+      case handleState state of
+	 (HReadable handle) -> do
+	    size <- hFileSize handle
+	    return $ fromIntegral size
+	 (HWritable _ pos) -> return pos
+	 HClosed -> do
+	    -- If it's not opened, open it readably, determine the
+	    -- size, and close it.
+	    fd <- openBinaryFile (csPath state) ReadMode
+	    size <- hFileSize fd
+	    hClose fd
+	    return $ fromIntegral size
 
 ----------------------------------------------------------------------
 readChunk :: Handle -> Int -> IO (Chunk, Int)

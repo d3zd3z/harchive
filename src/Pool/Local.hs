@@ -50,7 +50,6 @@ withLocalPool path action = do
 	 basePath = path,
 	 connection = db,
 	 chunkFiles = cf,
-	 chunkWriting = Nothing,
 	 lastCached = NoCache,
 	 -- Use the same default as the lisp code, if the limit has
 	 -- not been set.
@@ -78,8 +77,6 @@ data PoolState = PoolState {
    connection :: SQL.Connection,
    -- The currently accessible chunkfiles, indexed by cfile number.
    chunkFiles :: IntMap ChunkFile,
-   -- Chunk index we are writing to, if any.
-   chunkWriting :: Maybe Int,
    -- Last Chunk we looked up in the database.
    lastCached :: CacheResult,
    -- Maximum size in bytes we strive for for a chunk file.
@@ -152,6 +149,9 @@ localPoolWriteChunk pool chunk = do
 	       ", ?, ?, ?)")
 	       [SQL.toSql $ chunkKind chunk,
 		  SQL.toSql num, SQL.toSql offset]
+	    newSize <- liftIO $ chunkFileSize cfile
+	    query0 "insert or replace into chunk_files values (?,?)"
+	       [SQL.toSql num, SQL.toSql newSize]
 
 localPoolFlush :: LocalPool -> IO ()
 -- Make sure all data is written out.
@@ -188,19 +188,29 @@ prepareWrite size = do
    cfs <- gets chunkFiles
    case IntMap.size cfs of
       0 -> do
-	 path <- gets basePath
-	 let name = dataFileName path 0
-	 cfile <- liftIO $ openChunkFile name
-	 let cfs' = IntMap.insert 0 cfile cfs
-	 -- Close previous chunkWriting??
-	 modify $ \st -> st { chunkFiles = cfs', chunkWriting = Just 0 }
+	 cfile <- makeNewCFile 0
 	 return (0, cfile)
       n -> do
-	 -- TODO: Check if we've exceeded the size limit.
 	 let cfile = cfs IntMap.! (n-1)
-	 -- TODO: Close?, probably not.
-	 -- TODO: Indicate we've opened for writing.
-	 return (n-1, cfile)
+	 cfSize <- liftIO $ chunkFileSize cfile
+	 limit <- gets chunkFileLimit
+	 if cfSize + size + 64 < limit
+	    then return (n-1, cfile)
+	    else do
+	       liftIO $ chunkClose cfile
+	       newCFile <- makeNewCFile n
+	       return (n, newCFile)
+
+makeNewCFile :: Int -> AtomicPoolOp ChunkFile
+-- Create a new chunkfile of the given index.
+makeNewCFile index = do
+   cfs <- gets chunkFiles
+   path <- gets basePath
+   let name = dataFileName path index
+   cfile <- liftIO $ openChunkFile name
+   let cfs' = IntMap.insert index cfile cfs
+   modify $ \st -> st { chunkFiles = cfs' }
+   return cfile
 
 {-
 localPoolHas :: LocalPool -> Hash -> IO Bool
