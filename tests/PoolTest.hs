@@ -8,8 +8,10 @@ module PoolTest (
 
 import Chunk
 import Hash
+import TmpDir
 import Util
 import Pool.Memory
+import Pool.Local
 
 import qualified Data.ByteString as B
 
@@ -19,10 +21,16 @@ import Control.Monad
 import Data.Maybe
 
 poolTests = test [
-   "Pool 1" ~: poolTest1 ]
+   "Memory Pool" ~: poolTestMemory,
+   "Local Pool" ~: poolTestLocal ]
 
-poolTest1 :: IO ()
-poolTest1 = withMemoryPool exercisePool
+poolTestMemory :: IO ()
+poolTestMemory = withMemoryPool exercisePool
+
+poolTestLocal :: IO ()
+poolTestLocal = do
+   withTmpDir $ \tmpDir -> do
+      withLocalPool tmpDir exercisePool
 
 exercisePool :: (ChunkReaderWriter p) => p -> IO ()
 exercisePool pool = do

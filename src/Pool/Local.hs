@@ -3,7 +3,9 @@
 ----------------------------------------------------------------------
 
 module Pool.Local (
-   withLocalPool
+   withLocalPool,
+   LocalPool,
+   module Pool
 ) where
 
 import Hash
@@ -25,7 +27,7 @@ import System.FilePath
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 
-import Control.Exception (bracket)
+import Control.Exception (bracket, assert)
 import Control.Concurrent
 import Data.List (intercalate)
 import Control.Monad.State.Strict
@@ -45,6 +47,7 @@ withLocalPool path action = do
 	 basePath = path,
 	 connection = db,
 	 chunkFiles = cf,
+	 chunkWriting = Nothing,
 	 lastCached = NoCache }
       pool <- newMVar state0
       action $ LocalPool pool
@@ -69,6 +72,8 @@ data PoolState = PoolState {
    connection :: SQL.Connection,
    -- The currently accessible chunkfiles, indexed by cfile number.
    chunkFiles :: IntMap ChunkFile,
+   -- Chunk index we are writing to, if any.
+   chunkWriting :: Maybe Int,
    -- Last Chunk we looked up in the database.
    lastCached :: CacheResult }
 
@@ -86,6 +91,11 @@ instance ChunkQuerier LocalPool where
 
 instance ChunkReader LocalPool where
    poolReadChunk = localPoolReadChunk
+
+instance ChunkWriter LocalPool where
+   poolWriteChunk = localPoolWriteChunk
+
+instance ChunkReaderWriter LocalPool where {}
 
 -- Query the database to get a list of the backups that have been
 -- performed.  These are not returned in any particular order.
@@ -117,6 +127,46 @@ localPoolChunkKind pool hash = do
       where
 	 thrd (_, _, x) = x
 
+localPoolWriteChunk :: LocalPool -> Chunk -> IO ()
+-- Write the specified chunk to the storage pool.
+localPoolWriteChunk pool chunk = do
+   atomicLift pool $ do
+      let hash = chunkHash chunk
+      place <- lookupHash hash
+      maybe writeIt (const $ return ()) place
+      where
+	 writeIt = do
+	    (num, cfile) <- prepareWrite $ chunkStoreEstimate chunk
+	    offset <- liftIO $ chunkWrite cfile chunk
+	    query0 ("insert into hashes values (" ++
+	       hashToSql (chunkHash chunk) ++
+	       ", ?, ?, ?)")
+	       [SQL.toSql $ chunkKind chunk,
+		  SQL.toSql num, SQL.toSql offset]
+
+prepareWrite :: Int -> AtomicPoolOp (Int, ChunkFile)
+-- Determine (or create) a chunkfile appropriate for writing a chunk
+-- of the given size to.  Will update the state with the new chunkfile
+-- in the event one is created.  Returns the chunkfile index, and the
+-- new cfile.
+prepareWrite size = do
+   cfs <- gets chunkFiles
+   case IntMap.size cfs of
+      0 -> do
+	 path <- gets basePath
+	 let name = dataFileName path 0
+	 cfile <- liftIO $ openChunkFile name
+	 let cfs' = IntMap.insert 0 cfile cfs
+	 -- Close previous chunkWriting??
+	 modify $ \st -> st { chunkFiles = cfs', chunkWriting = Just 0 }
+	 return (0, cfile)
+      n -> do
+	 -- TODO: Check if we've exceeded the size limit.
+	 let cfile = cfs IntMap.! (n-1)
+	 -- TODO: Close?, probably not.
+	 -- TODO: Indicate we've opened for writing.
+	 return (n-1, cfile)
+
 {-
 localPoolHas :: LocalPool -> Hash -> IO Bool
 localPoolHas pool hash = do
@@ -143,6 +193,14 @@ lookupHash hash = do
 	 return place2
 
 -- These are a little tedious, since we have to spell out the types.
+
+query0 :: String -> [SQL.SqlValue] -> AtomicPoolOp ()
+-- Perform a query expecting no results.
+query0 query values = do
+   db <- gets connection
+   rows <- liftIO $ SQL.quickQuery' db query values
+   assert (length rows == 0) $
+      return ()
 
 query1 :: (SQL.SqlType a) => String -> [SQL.SqlValue] -> AtomicPoolOp [a]
 -- Perform a query where each row expects a single column result.

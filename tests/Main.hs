@@ -29,12 +29,12 @@ main = do
       exitWith (ExitFailure 1)
 
 tests = test [
+   "poolTests" ~: poolTests,
    "authTests" ~: authTests,
    "lengthTests" ~: lengthTests,
    "compressionTests" ~: compressionTests,
    "hashTests" ~: hashTests,
-   "simpleChunkIO" ~: simpleChunkIO,
-   "poolTests" ~: poolTests ]
+   "simpleChunkIO" ~: simpleChunkIO ]
 
 lengthTests = test [
    "Empty" ~: 0 ~?= chunkLength c1,

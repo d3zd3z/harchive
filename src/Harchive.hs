@@ -10,7 +10,6 @@ import Chunk
 import Chunk.IO
 import Hash
 import Status
-import Pool
 import Pool.Local
 
 import Tree
