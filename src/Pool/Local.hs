@@ -5,6 +5,7 @@
 module Pool.Local (
    withLocalPool,
    LocalPool,
+   getPoolLimit, setPoolLimit,
    module Pool
 ) where
 
@@ -30,6 +31,7 @@ import qualified Data.ByteString as B
 import Control.Exception (bracket, assert)
 import Control.Concurrent
 import Data.List (intercalate)
+import Data.Maybe (fromMaybe)
 import Control.Monad.State.Strict
 
 newtype LocalPool = LocalPool { theLocalPool :: MVar PoolState }
@@ -42,13 +44,17 @@ withLocalPool path action = do
    let dbName = path </> databaseName
    bracket (SQL.connectSqlite3 dbName) SQL.disconnect $ \db -> do
       setupSchema db
+      storedLimit <- queryLimit db
       cf <- scanDataFiles path db
       let state0 = PoolState {
 	 basePath = path,
 	 connection = db,
 	 chunkFiles = cf,
 	 chunkWriting = Nothing,
-	 lastCached = NoCache }
+	 lastCached = NoCache,
+	 -- Use the same default as the lisp code, if the limit has
+	 -- not been set.
+	 chunkFileLimit = fromMaybe (640 * 1024 * 1024) storedLimit }
       pool <- newMVar state0
       action $ LocalPool pool
 
@@ -75,7 +81,9 @@ data PoolState = PoolState {
    -- Chunk index we are writing to, if any.
    chunkWriting :: Maybe Int,
    -- Last Chunk we looked up in the database.
-   lastCached :: CacheResult }
+   lastCached :: CacheResult,
+   -- Maximum size in bytes we strive for for a chunk file.
+   chunkFileLimit :: Int }
 
 -- Each time we query the database, we cache the last result.
 data CacheResult
@@ -94,6 +102,7 @@ instance ChunkReader LocalPool where
 
 instance ChunkWriter LocalPool where
    poolWriteChunk = localPoolWriteChunk
+   poolFlush = localPoolFlush
 
 instance ChunkReaderWriter LocalPool where {}
 
@@ -143,6 +152,32 @@ localPoolWriteChunk pool chunk = do
 	       ", ?, ?, ?)")
 	       [SQL.toSql $ chunkKind chunk,
 		  SQL.toSql num, SQL.toSql offset]
+
+localPoolFlush :: LocalPool -> IO ()
+-- Make sure all data is written out.
+localPoolFlush pool = do
+   atomicLift pool $ do
+      -- Order is important here.  First, close all of the chunk
+      -- files, and then commit the database.
+      cfs <- gets chunkFiles
+      let cfsChunks = IntMap.elems cfs
+      mapM_ (\c -> liftIO $ chunkClose c) cfsChunks
+
+      db <- gets connection
+      liftIO $ SQL.commit db
+
+getPoolLimit :: LocalPool -> IO Int
+getPoolLimit pool = do
+   atomicLift pool $ do
+      gets chunkFileLimit
+
+setPoolLimit :: LocalPool -> Int -> IO ()
+setPoolLimit pool limit = do
+   atomicLift pool $ do
+      modify $ \state -> state { chunkFileLimit = limit }
+      query0 "delete from config where key = 'file_limit'" []
+      query0 "insert into config values('file_limit',?)"
+	 [SQL.toSql limit]
 
 prepareWrite :: Int -> AtomicPoolOp (Int, ChunkFile)
 -- Determine (or create) a chunkfile appropriate for writing a chunk
@@ -344,6 +379,7 @@ dataFileName base index =
       decimal = showInt index ""
 
 ----------------------------------------------------------------------
+
 queryCfiles :: SQL.Connection -> IO [Int]
 -- Retrieve the sizes of each chunk file from the database.  Verifies
 -- that the files are present and in order.
@@ -361,6 +397,14 @@ queryCfiles db = do
 	    else error "Unexpected sequence in chunk_files table"
 	 where n2' = SQL.fromSql n2
       flattenSizes _ _ = error "Unexpected result from chunk_files query"
+
+queryLimit :: SQL.Connection -> IO (Maybe Int)
+-- Query the database for a config entry that might define the size
+-- limit of the pool files, and return it if found.
+queryLimit db = do
+   rows <- SQL.quickQuery' db
+      "select value from config where key = 'file_limit'" []
+   return $ (fmap SQL.fromSql) $ (fmap head) $ maybeOne rows
 
 ----------------------------------------------------------------------
 setupSchema :: SQL.Connection -> IO ()
@@ -404,6 +448,7 @@ hashToSql = blobToSql . toByteString
 ----------------------------------------------------------------------
 -- TODO: Move the database stuff to a separate module possibly a
 -- separate monad.
+-- TODO: The config schema needs to have a unique key.
 schema :: [String]
 schema = [
    -- The schema needs to match the ldump schema, exactly to avoid schema mismatches.
