@@ -370,35 +370,3 @@ queryLimit db = do
       "select value from config where key = 'file_limit'" []
    return $ (fmap fromSql) $ (fmap head) $ maybeOne rows
 
-----------------------------------------------------------------------
-setupSchema :: DB -> IO ()
--- Check the schema of this database by trying to query for the config
--- value.
-setupSchema db = do
-   rows <- handleSql (const $ return Nothing) $ do
-      r <- quickQuery' db
-	 "select value from config where key = 'schema_hash'" []
-      return $ Just r
-   case rows of
-      Nothing -> do
-	 -- putStrLn "Creating schema"
-	 createSchema db
-      Just [] ->
-	 -- Unexpected case.  Database has the row, but no schema_hash
-	 -- added to it.  Probably some other database present.
-	 fail "The database file appears unexpected"
-      Just ((sHash:_):_) -> do
-	 let hash = byteStringToHash $ fromSql $ sHash
-	 if hash == schemaHash
-	    then return ()
-	    else fail "Schema hash mismatch, TODO: implement upgrade"
-      _ -> fail "Unexpected query result"
-
-createSchema :: DB -> IO ()
--- Create the initial database schema, asuming a blank slate.
-createSchema db = do
-   forM_ schema $ \item -> do
-      quickQuery db item []
-   quickQuery db ("insert into config values('schema_hash'," ++
-      hashToSql schemaHash ++ ")") []
-   commit db

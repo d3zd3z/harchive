@@ -6,12 +6,12 @@ module Pool.Local.DB (
    DB, fromSql, toSql,
    withDatabase,
    commit,
+   setupSchema,
 
    query0, query1, query2, query3, queryN,
 
    -- To be removed.
    SqlValue, quickQuery', SqlType,
-   quickQuery, handleSql,
 
    schema, schemaHash,
    blobToSql, hashToSql
@@ -27,6 +27,7 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 
 import Control.Exception (assert, bracket)
+import Control.Monad (forM_)
 import Data.List (intercalate)
 
 -- Export the Connection type.
@@ -85,10 +86,40 @@ queryN db convert query values = do
    rows <- quickQuery' db query values
    return $ map convert rows
 
-----------------------------------------------------------------------
 
--- TODO: Move the database stuff to a separate module possibly a
--- separate monad.
+----------------------------------------------------------------------
+setupSchema :: DB -> IO ()
+-- Check the schema of this database by trying to query for the config
+-- value.
+setupSchema db = do
+   rows <- handleSql (const $ return Nothing) $ do
+      r <- quickQuery' db
+	 "select value from config where key = 'schema_hash'" []
+      return $ Just r
+   case rows of
+      Nothing -> do
+	 -- putStrLn "Creating schema"
+	 createSchema db
+      Just [] ->
+	 -- Unexpected case.  Database has the row, but no schema_hash
+	 -- added to it.  Probably some other database present.
+	 fail "The database file appears unexpected"
+      Just ((sHash:_):_) -> do
+	 let hash = byteStringToHash $ fromSql $ sHash
+	 if hash == schemaHash
+	    then return ()
+	    else fail "Schema hash mismatch, TODO: implement upgrade"
+      _ -> fail "Unexpected query result"
+
+createSchema :: DB -> IO ()
+-- Create the initial database schema, asuming a blank slate.
+createSchema db = do
+   forM_ schema $ \item -> do
+      quickQuery db item []
+   query0 db ("insert into config values('schema_hash'," ++
+      hashToSql schemaHash ++ ")") []
+   commit db
+
 -- TODO: The config schema needs to have a unique key.
 schema :: [String]
 schema = [
