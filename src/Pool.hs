@@ -29,6 +29,8 @@ class (ChunkQuerier a) => ChunkReader a where
 
 -- |Something that can store chunks.
 class (ChunkQuerier a) => ChunkWriter a where
+   -- |Write a single chunk to the storage pool.  It is safe to write
+   -- a chunk that might already be present in the pool.
    poolWriteChunk :: a -> Chunk -> IO ()
 
 newtype EmptyPool = EmptyPool ()

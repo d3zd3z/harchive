@@ -24,9 +24,12 @@ poolTests = test [
 poolTest1 :: IO ()
 poolTest1 = withMemoryPool $ \pool -> do
    let chunks = take 50 $ randomChunks (1024, 32768) 1
+
    forM_ chunks $ poolWriteChunk pool
-   forM_ chunks $ \chunk -> do
-      mustError $ poolWriteChunk pool chunk
+
+   -- Verify that we can write the same chunks again.
+   forM_ chunks $ poolWriteChunk pool
+
    forM_ chunks $ \chunk -> do
       let hash = chunkHash chunk
 

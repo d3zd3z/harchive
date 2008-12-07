@@ -60,6 +60,7 @@ instance ChunkWriter MemoryPool where
       state <- get
       let cs = chunks state
       let hash = chunkHash chunk
-      when (Map.member hash cs) $ fail "poolWriteChunk, duplicate"
+      -- We assume that if the hash is the same, then the chunk is as
+      -- well.
       let cs' = Map.insert hash chunk cs
       put $ state { chunks = cs' }
