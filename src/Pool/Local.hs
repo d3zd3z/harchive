@@ -300,7 +300,12 @@ scanFile db (expectedSize, path, index) = do
    case (present, expectedSize) of
       (False, Just _) -> fail $ "Missing pool file: " ++ path
       (False, Nothing) -> return Nothing
-      (True, Nothing) -> fail $ "Handle pool file not in DB: " ++ path
+      (True, Nothing) -> do
+	 cfile <- openChunkFile path
+	 cfsize <- chunkFileSize cfile
+	 recoverFile db index cfile 0 cfsize
+	 chunkClose cfile
+	 return $ Just cfile
       (True, Just esize) -> do
 	 cfile <- openChunkFile path
 	 cfsize <- chunkFileSize cfile

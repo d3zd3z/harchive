@@ -34,7 +34,8 @@ poolTests = test [
    "Memory Pool" ~: poolTestMemory,
    "Local Pool" ~: poolTestLocal,
    "Multi Pool Files" ~: multiFileTest,
-   "Recover Single Pool File" ~: recoverSingleFile ]
+   "Recover Single Pool File" ~: recoverSingleFile,
+   "Recover multiple pool files" ~: recoverMultiple ]
 
 poolTestMemory :: IO ()
 poolTestMemory = withMemoryPool exercisePool
@@ -112,6 +113,47 @@ recoverSingleFile = do
 	    maybe (assert "No chunk") (const $ return ()) c2
 	    let c2' = fromJust c2
 	    hash @?= chunkHash c2'
+
+recoverMultiple :: IO ()
+-- Test recovery of multiple files.
+recoverMultiple = do
+   withTmpDir $ \tmpDir -> do
+      let chunks = take 50 $ randomChunks (1024, 32768) 600
+
+      let firstChunk = head chunks
+      let (aChunks, bChunks) = splitAt 50 (tail $ take 101 chunks)
+
+      withLocalPool tmpDir $ \pool -> do
+	 setPoolLimit pool testLimit
+	 poolWriteChunk pool firstChunk
+	 poolFlush pool
+      stashDatabase tmpDir
+      withLocalPool tmpDir $ \pool -> do
+	 forM_ aChunks $ poolWriteChunk pool
+	 poolFlush pool
+      replaceDatabase tmpDir
+      withLocalPool tmpDir $ \pool -> do
+	 forM_ (firstChunk : aChunks) $ \chunk -> do
+	    let hash = chunkHash chunk
+	    c2 <- poolReadChunk pool hash
+	    maybe (assert "No chunk") (const $ return ()) c2
+	    let c2' = fromJust c2
+	    hash @?= chunkHash c2'
+
+      -- Make sure we can write more.
+      withLocalPool tmpDir $ \pool -> do
+	 forM_ bChunks $ poolWriteChunk pool
+	 poolFlush pool
+
+      withLocalPool tmpDir $ \pool -> do
+	 forM_ (firstChunk : aChunks ++ bChunks) $ \chunk -> do
+	    let hash = chunkHash chunk
+	    c2 <- poolReadChunk pool hash
+	    maybe (assert "No chunk") (const $ return ()) c2
+	    let c2' = fromJust c2
+	    hash @?= chunkHash c2'
+
+   where testLimit = 100 * 1024
 
 exercisePool :: (ChunkReaderWriter p) => p -> IO ()
 exercisePool pool = do
