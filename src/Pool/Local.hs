@@ -148,6 +148,7 @@ localPoolWriteChunk pool chunk = do
 	    newSize <- liftIO $ chunkFileSize cfile
 	    liftIO $ query0 db "insert or replace into chunk_files values (?,?)"
 	       [toSql num, toSql newSize]
+	    modify $ \state -> state { lastCached = NoCache }
 
 localPoolFlush :: LocalPool -> IO ()
 -- Make sure all data is written out.

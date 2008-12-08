@@ -35,6 +35,10 @@ main = do
       ["show", path, hash] -> withLocalPool path $ showOne (fromHex hash)
       ["walk", path, hash] -> withLocalPool path $ runWalk (fromHex hash)
       ["hashes", path, hash] -> withLocalPool path $ runHashes (fromHex hash)
+      ["migrate", srcPath, dstPath, hash] ->
+	 withLocalPool srcPath $ \srcPool ->
+	    withLocalPool dstPath $ \dstPool ->
+	       migrate srcPool dstPool (fromHex hash)
       _ ->
 	 ioError (userError usage)
 
@@ -142,6 +146,24 @@ runHashes hash pool = do
    where
       act h = do
 	 putStrLn $ "Hash: " ++ show h
+
+----------------------------------------------------------------------
+
+migrate :: (ChunkReader srcPool, ChunkWriter dstPool) =>
+   srcPool -> dstPool -> Hash -> IO ()
+-- Migrate all data from srcPool to dstPool that is needed for the
+-- backup referenced by hash.
+migrate srcPool dstPool hash = do
+   chunk <- liftM fromJust $ poolReadChunk srcPool hash
+   let info = decodeBackupInfo chunk
+   walkHashes srcPool (biHash info) $ \tmpHash -> do
+      present <- poolHashPresent dstPool tmpHash
+      unless present $ do
+	 -- putStrLn $ "Hash: " ++ show tmpHash
+	 tmpChunk <- liftM fromJust $ poolReadChunk srcPool tmpHash
+	 poolWriteChunk dstPool tmpChunk
+   poolWriteChunk dstPool chunk
+   poolFlush dstPool
 
 ----------------------------------------------------------------------
 
