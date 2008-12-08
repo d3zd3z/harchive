@@ -103,6 +103,8 @@ recoverSingleFile = do
       stashDatabase tmpDir
       write 1
       replaceDatabase tmpDir
+      mustError $ write 2
+      replayLocalPool tmpDir
       write 2
 
       withLocalPool tmpDir $ \pool -> do

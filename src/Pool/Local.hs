@@ -5,6 +5,7 @@
 module Pool.Local (
    withLocalPool,
    LocalPool,
+   replayLocalPool,
    getPoolLimit, setPoolLimit,
    module Pool
 ) where
@@ -296,16 +297,29 @@ scanFile :: (Maybe Int, FilePath) -> IO (Maybe ChunkFile)
 scanFile (expectedSize, path) = do
    present <- doesFileExist path
    case (present, expectedSize) of
-      (False, Just _) -> fail $ "Missing pool file: " ++ path
+      (False, Just _) -> replayAlert path
       (False, Nothing) -> return Nothing
-      (True, Nothing) -> fail $ "Handle pool file not in DB: " ++ path
+      (True, Nothing) -> replayAlert path
       (True, Just size) -> do
 	 cfile <- openChunkFile path
 	 size' <- chunkFileSize cfile
 	 chunkClose cfile
 	 if size == size'
 	    then return $ Just cfile
-	    else fail $ "Pool size is wrong, need to recover: " ++ path
+	    else replayAlert path
+
+replayAlert :: FilePath -> IO a
+-- Print a message that the pool needs to be recovered, and raise an
+-- exception.
+replayAlert path = do
+   fail $ "*** Previous run did not shutdown cleanly\n" ++
+      "*** Please run 'harchive replay " ++ takeDirectory path ++ "' to recover\n"
+
+replayLocalPool :: FilePath -> IO ()
+-- Recover from failure modes caused by unclean exits of previous
+-- runs.  Basically we want to keep around any chunks that got written
+-- so that they don't have to be dumped again.
+replayLocalPool path = undefined
 
 {-
 whileM_ :: (a -> IO Bool) -> [a] -> IO ()
