@@ -20,6 +20,9 @@ class ChunkQuerier a where
    poolChunkKind :: a -> Hash -> IO (Maybe String)
    poolHashPresent :: a -> Hash -> IO Bool
 
+   -- |Retrieve the UUID for this storage pool.
+   poolGetUuid :: a -> IO String
+
    poolHashPresent p hash = do
       info <- poolChunkKind p hash
       return $ maybe False (\_ -> True) info
@@ -45,6 +48,7 @@ newtype EmptyPool = EmptyPool ()
 instance ChunkQuerier EmptyPool where
    poolGetBackups _ = return []
    poolChunkKind _ _ = return Nothing
+   poolGetUuid _ = error "No uuid for empty pool"
 
 instance ChunkReader EmptyPool where
    poolReadChunk _ _ = return Nothing

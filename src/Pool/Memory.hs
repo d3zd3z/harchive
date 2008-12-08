@@ -9,6 +9,7 @@ module Pool.Memory (
    module Pool
 ) where
 
+import Auth
 import Chunk
 import Hash
 import Pool
@@ -23,12 +24,14 @@ newtype MemoryPool = MemoryPool { thePool :: MVar MemoryState }
 
 withMemoryPool :: (MemoryPool -> IO a) -> IO a
 withMemoryPool action = do
-   let state0 = MemoryState Map.empty
+   uuid <- getUuid
+   let state0 = MemoryState Map.empty uuid
    pool <- newMVar state0
    action $ MemoryPool pool
 
 data MemoryState = MemoryState {
-   chunks :: Map Hash Chunk }
+   chunks :: Map Hash Chunk,
+   myUuid :: String }
 
 type AtomicPoolOp a = StateT MemoryState IO a
 
@@ -48,6 +51,9 @@ instance ChunkQuerier MemoryPool where
 
    poolChunkKind pool hash = liftM (fmap chunkKind) $ poolReadChunk pool hash
 
+   poolGetUuid pool = atomicLift pool $ do
+      gets myUuid
+
 instance ChunkReader MemoryPool where
 
    poolReadChunk pool hash = atomicLift pool $ do
@@ -64,5 +70,7 @@ instance ChunkWriter MemoryPool where
       -- well.
       let cs' = Map.insert hash chunk cs
       put $ state { chunks = cs' }
+
+   poolFlush _pool = return ()
 
 instance ChunkReaderWriter MemoryPool where {}

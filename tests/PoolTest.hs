@@ -32,6 +32,7 @@ import System.Exit
 
 poolTests = test [
    "Memory Pool" ~: poolTestMemory,
+   "UUID Pool Test" ~: poolUuidTest,
    "Local Pool" ~: poolTestLocal,
    "Multi Pool Files" ~: multiFileTest,
    "Recover Single Pool File" ~: recoverSingleFile,
@@ -155,6 +156,12 @@ recoverMultiple = do
 
    where testLimit = 100 * 1024
 
+poolUuidTest :: IO ()
+poolUuidTest = do
+   testUuid withMemoryPool False
+   withTmpDir $ \tmpDir -> do
+      testUuid (withLocalPool tmpDir) True
+
 exercisePool :: (ChunkReaderWriter p) => p -> IO ()
 exercisePool pool = do
    let chunks = take 50 $ randomChunks (1024, 32768) 1
@@ -190,6 +197,17 @@ exercisePool pool = do
 
       c22 <- poolReadChunk pool hash2
       maybe (return ()) (const $ assert "Bad chunk found") c22
+
+testUuid :: (ChunkQuerier p) => ((p -> IO String) -> IO String) -> Bool -> IO ()
+-- Using the given pool action generator, test that UUID's are
+-- coherent.
+testUuid generator expectSame = do
+   uuid1 <- generator $ poolGetUuid
+   uuid2 <- generator $ poolGetUuid
+   -- putStrLn $ "TestUuid: " ++ uuid1 ++ " " ++ uuid2
+   if expectSame
+      then (uuid1 == uuid2) @? "UUIDs should match"
+      else (uuid1 /= uuid2) @? "UUIDs should match"
 
 -- To simulate partial writes, we make a copy of the database file,
 -- and put it back after performing some more writing.

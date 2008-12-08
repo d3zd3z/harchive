@@ -3,7 +3,7 @@
 ----------------------------------------------------------------------
 
 module Auth (
-   getNonce,
+   getNonce, getUuid,
    authInitiator, authRecipient,
    runAuthIO,
 
@@ -148,3 +148,11 @@ getOSRandomBytes :: Int -> IO B.ByteString
 getOSRandomBytes count = do
    E.bracket (openBinaryFile "/dev/urandom" ReadMode) hClose $ \handle -> do
       B.hGet handle count
+
+getUuid :: IO String
+-- TODO: This is very Linux dependent.
+-- Use the kernel random uuid generator to generate a single random
+-- uuid.
+getUuid = do
+   E.bracket (openFile "/proc/sys/kernel/random/uuid" ReadMode) hClose $ \handle -> do
+      hGetLine handle

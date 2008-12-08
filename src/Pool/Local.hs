@@ -9,6 +9,7 @@ module Pool.Local (
    module Pool
 ) where
 
+import Auth (getUuid)
 import Hash
 import Chunk
 import Chunk.IO
@@ -87,6 +88,7 @@ data CacheResult
 instance ChunkQuerier LocalPool where
    poolGetBackups = localPoolGetBackups
    poolChunkKind = localPoolChunkKind
+   poolGetUuid = localPoolGetUuid
 
 instance ChunkReader LocalPool where
    poolReadChunk = localPoolReadChunk
@@ -177,6 +179,22 @@ setPoolLimit pool limit = do
 	 query0 db "delete from config where key = 'file_limit'" []
 	 query0 db "insert into config values('file_limit',?)"
 	    [toSql limit]
+	 commit db
+
+localPoolGetUuid :: LocalPool -> IO String
+localPoolGetUuid pool = do
+   atomicLift pool $ do
+      db <- gets connection
+      liftIO $ do
+	 uuid <- query1 db "select value from config where key = 'uuid'" []
+	 case maybeOne uuid of
+	    Just u -> return u
+	    Nothing -> do
+	       newUuid <- getUuid
+	       query0 db "insert into config values('uuid',?)"
+		  [toSql newUuid]
+	       commit db
+	       return newUuid
 
 prepareWrite :: Int -> AtomicPoolOp (Int, ChunkFile)
 -- Determine (or create) a chunkfile appropriate for writing a chunk
