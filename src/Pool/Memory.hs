@@ -24,7 +24,7 @@ newtype MemoryPool = MemoryPool { thePool :: MVar MemoryState }
 
 withMemoryPool :: (MemoryPool -> IO a) -> IO a
 withMemoryPool action = do
-   uuid <- getUuid
+   uuid <- genUuid
    let state0 = MemoryState Map.empty uuid
    pool <- newMVar state0
    action $ MemoryPool pool

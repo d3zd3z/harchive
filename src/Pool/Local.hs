@@ -9,7 +9,7 @@ module Pool.Local (
    module Pool
 ) where
 
-import Auth (getUuid)
+import Auth (genUuid)
 import Hash
 import Chunk
 import Chunk.IO
@@ -190,7 +190,7 @@ localPoolGetUuid pool = do
 	 case maybeOne uuid of
 	    Just u -> return u
 	    Nothing -> do
-	       newUuid <- getUuid
+	       newUuid <- genUuid
 	       query0 db "insert into config values('uuid',?)"
 		  [toSql newUuid]
 	       commit db

@@ -3,7 +3,7 @@
 ----------------------------------------------------------------------
 
 module Auth (
-   getNonce, getUuid,
+   genNonce, genUuid,
    authInitiator, authRecipient,
    runAuthIO,
 
@@ -27,13 +27,13 @@ authInitiator :: String -> IO AuthState
 -- The initial communication needs to be IO, since it needs to get a
 -- unique number from the environment.  The rest is pure.
 authInitiator secret = do
-   nonce <- getNonce
+   nonce <- genNonce
    let message = "challenge " ++ nonce
    return $ AuthMore (Just message) (initiatorResponse secret nonce)
 
 authRecipient :: String -> IO AuthState
 authRecipient secret = do
-   nonce <- getNonce
+   nonce <- genNonce
    return $ AuthMore Nothing (recipientResponse secret nonce)
 
 runAuthIO :: Handle -> Handle -> AuthState -> IO Bool
@@ -136,9 +136,9 @@ hmac secret info =
 
 ----------------------------------------------------------------------
 
-getNonce :: IO String
+genNonce :: IO String
 -- Generate a Nonce appropriate for our application, or as a key.
-getNonce = do
+genNonce = do
    bytes <- getOSRandomBytes 33
    return $ Base64.encode $ B.unpack bytes
 
@@ -149,10 +149,10 @@ getOSRandomBytes count = do
    E.bracket (openBinaryFile "/dev/urandom" ReadMode) hClose $ \handle -> do
       B.hGet handle count
 
-getUuid :: IO String
+genUuid :: IO String
 -- TODO: This is very Linux dependent.
 -- Use the kernel random uuid generator to generate a single random
 -- uuid.
-getUuid = do
+genUuid = do
    E.bracket (openFile "/proc/sys/kernel/random/uuid" ReadMode) hClose $ \handle -> do
       hGetLine handle

@@ -35,7 +35,7 @@ main = do
 	 success <- runAuthIO stdin stdout action
 	 putStrLn $ "Auth: " ++ show success
       ["uuid"] -> do
-	 uuid <- getUuid
+	 uuid <- genUuid
 	 putStrLn uuid
       _ -> do
 	 putStr $ "Usage: command args\n"
