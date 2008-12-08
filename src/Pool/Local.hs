@@ -26,6 +26,8 @@ import Control.Concurrent
 import Data.Maybe (fromMaybe)
 import Control.Monad.State.Strict
 
+-- import Text.Printf
+
 newtype LocalPool = LocalPool { theLocalPool :: MVar PoolState }
 
 withLocalPool :: FilePath -> (LocalPool -> IO a) -> IO a
@@ -287,25 +289,47 @@ scanDataFiles path db = do
    cfileSizes <- queryCfiles db
    let expectedSizes = map Just cfileSizes ++ repeat Nothing
    let names = map (dataFileName path) [0..]
-   cfiles <- whileM scanFile (zip expectedSizes names)
+   cfiles <- whileM (scanFile db) (zip3 expectedSizes names [0..])
    return $ IntMap.fromList $ zip [0..] cfiles
 
-scanFile :: (Maybe Int, FilePath) -> IO (Maybe ChunkFile)
+scanFile :: DB -> (Maybe Int, FilePath, Int) -> IO (Maybe ChunkFile)
 -- Check a single pool data file, comparing it's size to the expected
 -- size.  Returns False when we should stop scanning.
-scanFile (expectedSize, path) = do
+scanFile db (expectedSize, path, index) = do
    present <- doesFileExist path
    case (present, expectedSize) of
       (False, Just _) -> fail $ "Missing pool file: " ++ path
       (False, Nothing) -> return Nothing
       (True, Nothing) -> fail $ "Handle pool file not in DB: " ++ path
-      (True, Just size) -> do
+      (True, Just esize) -> do
 	 cfile <- openChunkFile path
-	 size' <- chunkFileSize cfile
+	 cfsize <- chunkFileSize cfile
+	 recoverFile db index cfile esize cfsize
 	 chunkClose cfile
-	 if size == size'
-	    then return $ Just cfile
-	    else fail $ "Pool size is wrong, need to recover: " ++ path
+	 return $ Just cfile
+
+recoverFile :: DB -> Int -> ChunkFile -> Int -> Int -> IO ()
+-- Process recovery for a single chunk file.  Updates database records
+-- for this chunk file to indicate that recovery has been completed.
+recoverFile db index cfile offset totalSize = do
+   recover offset
+   when (offset < totalSize) $ commit db
+   where
+      recover off | off == totalSize = return ()
+      recover off | off > totalSize =
+	 fail $ "Pool file is truncated, data has been lost"
+      recover off = do
+	 -- printf "recover offset=%d, total=%d\n" offset totalSize
+	 (chunk, off') <- chunkRead cfile off
+	 -- printf " new offset=%d\n" off'
+	 query0 db ("insert into hashes values (" ++
+	    hashToSql (chunkHash chunk) ++
+	    ", ?, ?, ?)")
+	    [toSql $ chunkKind chunk,
+	       toSql index, toSql off]
+	 query0 db "insert or replace into chunk_files values (?,?)"
+	    [toSql index, toSql off']
+	 recover off'
 
 {-
 whileM_ :: (a -> IO Bool) -> [a] -> IO ()
