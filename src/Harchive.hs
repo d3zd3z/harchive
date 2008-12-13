@@ -202,16 +202,16 @@ makeCheckProgress = do
    total <- makeCounter
    chunks <- makeCounter
    let tracker = TrackBlock [
-	 TrackLine [
+	 TrackLine (TrackNest [
 	    TrackString "  ",
 	    TrackKBCounter bytes,
 	    TrackString " Kbytes, ",
 	    TrackKBCounter total,
 	    TrackString " Ktotal, ",
 	    TrackCounter chunks,
-	    TrackString " chunks" ],
-	 TrackLine [ TrackString "   file: ",
-	    TrackPath path ] ]
+	    TrackString " chunks" ]),
+	 TrackLine (TrackNest [ TrackString "   file: ",
+	    TrackPath path ]) ]
    return $ CheckStatus { csPath = path, csBytes = bytes, csTotal = total,
       csChunks = chunks, csTrack = tracker }
 

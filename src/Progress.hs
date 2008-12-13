@@ -136,8 +136,9 @@ data Tracker
    | TrackCounter Counter
    | TrackKBCounter Counter
    | TrackPath PathTracker
+   | TrackNest [Tracker]
 
-newtype TrackLine = TrackLine [Tracker]
+newtype TrackLine = TrackLine Tracker
 newtype TrackBlock = TrackBlock [TrackLine]
 
 -- TODO: The haskelly thing would be to make some combining operators
@@ -153,19 +154,22 @@ renderBlock (TrackBlock block) =
 
 renderLine :: TrackLine -> IO String
 renderLine (TrackLine line) =
-   liftM concat $ mapM renderTracker line
+   liftM concat $ renderTracker line
 
-renderTracker :: Tracker -> IO String
-renderTracker (TrackString st) = return st
+renderTracker :: Tracker -> IO [String]
+renderTracker (TrackString st) = return [st]
 renderTracker (TrackCounter (Counter box)) =
    withMVar box $ \c ->
-      return $ showNum 8 c
+      return $ [showNum 10 c]
 renderTracker (TrackKBCounter (Counter box)) =
    withMVar box $ \c ->
-      return $ showNum 8 (c `div` 1024)
+      return $ [showNum 12 (c `div` 1024)]
 renderTracker (TrackPath (PathTracker box)) =
    withMVar box $ \c ->
-      return $ lpad 65 $ reverse $ take 65 $ reverse c
+      return $ [lpad 65 $ reverse $ take 65 $ reverse c]
+renderTracker (TrackNest tracks) = do
+   nodes <- mapM renderTracker tracks
+   return $ concat nodes
 
 showNum :: (Num a) => Int -> a -> String
 showNum padding = pad padding . commaify . show
