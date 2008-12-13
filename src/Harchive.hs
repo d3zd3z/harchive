@@ -10,6 +10,7 @@ import Chunk
 import Chunk.IO
 import Hash
 import Status
+import Progress
 import Pool.Local
 
 import Tree
@@ -30,6 +31,7 @@ main = do
       ("check":files@(_:_)) ->
 	 statusToIO 1 $ mapM_ runCheck files
 	 -- mapM_ (statusToIO 1 . runCheck) files
+      ("ncheck":files@(_:_)) -> newCheck files
       ["pool", path] -> withLocalPool path $ \_ -> return ()
       ["list", path] -> withLocalPool path showBackups
       ["show", path, hash] -> withLocalPool path $ showOne (fromHex hash)
@@ -185,3 +187,54 @@ runCheck path = do
    process 0
 
    liftIO $ chunkClose cfile
+
+data CheckStatus = CheckStatus {
+   csPath :: PathTracker,
+   csBytes :: Counter,
+   csTotal :: Counter,
+   csChunks :: Counter,
+   csTrack :: TrackBlock }
+
+makeCheckProgress :: IO CheckStatus
+makeCheckProgress = do
+   path <- makePathTracker "???"
+   bytes <- makeCounter
+   total <- makeCounter
+   chunks <- makeCounter
+   let tracker = TrackBlock [
+	 TrackLine [
+	    TrackString "  ",
+	    TrackKBCounter bytes,
+	    TrackString " Kbytes, ",
+	    TrackKBCounter total,
+	    TrackString " Ktotal, ",
+	    TrackCounter chunks,
+	    TrackString " chunks" ],
+	 TrackLine [ TrackString "   file: ",
+	    TrackPath path ] ]
+   return $ CheckStatus { csPath = path, csBytes = bytes, csTotal = total,
+      csChunks = chunks, csTrack = tracker }
+
+newCheck :: [FilePath] -> IO ()
+newCheck paths = do
+   stat <- makeCheckProgress
+   pm <- startProgressMeter $ csTrack stat
+
+   forM_ paths $ \path -> do
+      setTrackerPath (csPath stat) path
+      resetCounter (csBytes stat)
+      cfile <- openChunkFile path
+      size <- chunkFileSize cfile
+      let
+	 process pos = do
+	    (chunk, next) <- chunkRead cfile pos
+	    incrCounter (csChunks stat) (1 :: Int)
+	    let estimate = chunkStoreEstimate chunk
+	    incrCounter (csBytes stat) estimate
+	    incrCounter (csTotal stat) estimate
+	    if next < size
+	       then process next
+	       else return ()
+      process 0
+      chunkClose cfile
+   stopProgressMeter pm
