@@ -193,7 +193,7 @@ data CheckStatus = CheckStatus {
    csBytes :: Counter,
    csTotal :: Counter,
    csChunks :: Counter,
-   csTrack :: TrackBlock }
+   csTrack :: Tracker }
 
 makeCheckProgress :: IO CheckStatus
 makeCheckProgress = do
@@ -201,17 +201,10 @@ makeCheckProgress = do
    bytes <- makeCounter
    total <- makeCounter
    chunks <- makeCounter
-   let tracker = TrackBlock [
-	 TrackLine (TrackNest [
-	    TrackString "  ",
-	    TrackKBCounter bytes,
-	    TrackString " Kbytes, ",
-	    TrackKBCounter total,
-	    TrackString " Ktotal, ",
-	    TrackCounter chunks,
-	    TrackString " chunks" ]),
-	 TrackLine (TrackNest [ TrackString "   file: ",
-	    TrackPath path ]) ]
+   let tracker =
+	    "  " +++ kb bytes +++ " KBytes, " +++ kb total +++ " Ktotal, " +++
+	    chunks +++ " chunks\n" +++
+	    "   file: " +++ TrackPath path
    return $ CheckStatus { csPath = path, csBytes = bytes, csTotal = total,
       csChunks = chunks, csTrack = tracker }
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeSynonymInstances #-}
 ----------------------------------------------------------------------
 -- Progress monitoring.
 ----------------------------------------------------------------------
@@ -15,10 +16,8 @@ module Progress (
    progressIO,
 
    Tracker(..),
-   TrackLine(..),
-   TrackBlock(..),
-
-   renderBlock
+   (+++), Trackerable(..),
+   kb
 ) where
 
 import Control.Concurrent
@@ -57,14 +56,14 @@ setTrackerPath (PathTracker box) text =
 ----------------------------------------------------------------------
 
 data ProgressMeter = ProgressMeter {
-   pmTracker :: TrackBlock,
+   pmTracker :: Tracker,
    pmCommand :: MVar Command }
 
 data Command
    = Pause (MVar ()) (MVar ())
    | Stop (MVar ())
 
-startProgressMeter :: TrackBlock -> IO ProgressMeter
+startProgressMeter :: Tracker -> IO ProgressMeter
 startProgressMeter block = do
    command <- newEmptyMVar
    let pm = ProgressMeter {
@@ -73,34 +72,20 @@ startProgressMeter block = do
    forkIO $ progressThread pm
    return pm
 
-{-
-      let
-	 run = do
-	    cmd <- timeout 1000000 $ takeMVar command
-	    case cmd of
-	       Just (Stop done) -> putStrLn "Stop" >> putMVar done ()
-	       Nothing -> do
-		  rendered <- renderBlock block
-		  putStr $ unlines rendered
-		  run
-      in run
-   return pm
--}
-
 progressThread :: ProgressMeter -> IO ()
 progressThread pm = do
-   rendered <- renderBlock $ pmTracker pm
+   rendered <- renderTracker $ pmTracker pm
    let clear = do
-	 putStr $ "\27[" ++ show (length rendered) ++ "A\27[0J"
-   putStr $ unlines rendered
+	 putStr $ "\r\27[" ++ show (countElem '\n' rendered) ++ "A\27[0J"
+   putStr $ rendered
    hFlush stdout
    cmd <- timeout 1000000 $ takeMVar $ pmCommand pm
    case cmd of
       Just (Stop done) -> do
 	 -- Draw final updated values.
 	 clear
-	 rendered' <- renderBlock $ pmTracker pm
-	 putStr $ unlines rendered'
+	 rendered' <- renderTracker $ pmTracker pm
+	 putStrLn $ rendered'
 	 putMVar done ()
       Just (Pause paused cont) -> do
 	 clear
@@ -117,6 +102,10 @@ stopProgressMeter pm = do
    done <- newEmptyMVar
    putMVar (pmCommand pm) $ Stop done
    takeMVar done
+
+countElem :: (Eq a) => a -> [a] -> Int
+-- Count the number of occurrences of 'a' in the list.
+countElem elt = length . filter (==elt)
 
 progressIO :: ProgressMeter -> IO a -> IO a
 -- Perform the IO operation with the progress meter safely paused.
@@ -138,35 +127,37 @@ data Tracker
    | TrackPath PathTracker
    | TrackNest [Tracker]
 
-newtype TrackLine = TrackLine Tracker
-newtype TrackBlock = TrackBlock [TrackLine]
+class Trackerable t where
+   toTracker :: t -> Tracker
 
--- TODO: The haskelly thing would be to make some combining operators
--- that take these things and just take strings and counters and such
--- and assemble them properly.
+instance Trackerable Counter where
+   toTracker = TrackCounter
 
--- renderedTracker :: TrackBlock -> IO String
--- renderedTracker tb = do
+instance Trackerable Tracker where
+   toTracker = id
 
-renderBlock :: TrackBlock -> IO [String]
-renderBlock (TrackBlock block) =
-   mapM renderLine block
+instance Trackerable String where
+   toTracker = TrackString
 
-renderLine :: TrackLine -> IO String
-renderLine (TrackLine line) =
-   liftM concat $ renderTracker line
+kb :: Counter -> Tracker
+kb = TrackKBCounter
 
-renderTracker :: Tracker -> IO [String]
-renderTracker (TrackString st) = return [st]
+infixr 5 +++
+
+(+++) :: (Trackerable a, Trackerable b) => a -> b -> Tracker
+a +++ b = TrackNest [toTracker a, toTracker b]
+
+renderTracker :: Tracker -> IO String
+renderTracker (TrackString st) = return st
 renderTracker (TrackCounter (Counter box)) =
    withMVar box $ \c ->
-      return $ [showNum 10 c]
+      return $ showNum 10 c
 renderTracker (TrackKBCounter (Counter box)) =
    withMVar box $ \c ->
-      return $ [showNum 12 (c `div` 1024)]
+      return $ showNum 12 (c `div` 1024)
 renderTracker (TrackPath (PathTracker box)) =
    withMVar box $ \c ->
-      return $ [lpad 65 $ reverse $ take 65 $ reverse c]
+      return $ lpad 65 $ reverse $ take 65 $ reverse c
 renderTracker (TrackNest tracks) = do
    nodes <- mapM renderTracker tracks
    return $ concat nodes
