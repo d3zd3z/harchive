@@ -12,6 +12,7 @@ import Hash
 import Status
 import Progress
 import Pool.Local
+import Server
 
 import Tree
 
@@ -37,6 +38,7 @@ main = do
       ["show", path, hash] -> withLocalPool path $ showOne (fromHex hash)
       ["walk", path, hash] -> withLocalPool path $ runWalk (fromHex hash)
       ["hashes", path, hash] -> withLocalPool path $ runHashes (fromHex hash)
+      ["serve"] -> serve 8932
       ["migrate", srcPath, dstPath, hash] ->
 	 withLocalPool srcPath $ \srcPool ->
 	    withLocalPool dstPath $ \dstPool ->
