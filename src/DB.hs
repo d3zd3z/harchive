@@ -6,7 +6,7 @@ module DB (
    DB, fromSql, toSql,
    withDatabase,
    commit,
-   setupSchema,
+   setupSchema, checkSchema, SchemaStatus(..),
 
    query0, query1, query2, query3, queryN,
 
@@ -84,28 +84,42 @@ queryN db convert query values = do
 
 
 ----------------------------------------------------------------------
-setupSchema :: DB -> [String] -> IO ()
--- Check the schema of this database by trying to query for the config
--- value.
-setupSchema db schema = do
+-- Possible kinds of Schema Queries.
+data SchemaStatus
+   = EmptySchema
+   | CorrectSchema
+   | IncorrectSchema
+   | OtherSchemaError
+
+checkSchema :: DB -> [String] -> IO SchemaStatus
+-- Check that the schema is correct.  Returns 'Left' with information,
+-- or 'Right ()' if all is well.
+checkSchema db schema = do
    rows <- handleSql (const $ return Nothing) $ do
       r <- quickQuery' db
 	 "select value from config where key = 'schema_hash'" []
       return $ Just r
-   case rows of
-      Nothing -> do
-	 -- putStrLn "Creating schema"
-	 createSchema db schema
-      Just [] ->
-	 -- Unexpected case.  Database has the row, but no schema_hash
-	 -- added to it.  Probably some other database present.
-	 fail "The database file appears unexpected"
-      Just ((sHash:_):_) -> do
-	 let hash = byteStringToHash $ fromSql $ sHash
-	 if hash == schemaHash schema
-	    then return ()
-	    else fail "Schema hash mismatch, TODO: implement upgrade"
-      _ -> fail "Unexpected query result"
+   return $ case rows of
+      Nothing -> EmptySchema
+      Just [] -> OtherSchemaError
+      Just ((sHash:_):_) ->
+	 let
+	    hash = byteStringToHash $ fromSql $ sHash
+	 in if hash == schemaHash schema
+	       then CorrectSchema
+	       else IncorrectSchema
+      _ -> OtherSchemaError
+
+setupSchema :: DB -> [String] -> IO ()
+-- Check the schema of this database by trying to query for the config
+-- value.
+setupSchema db schema = do
+   state <- checkSchema db schema
+   case state of
+      EmptySchema -> createSchema db schema
+      IncorrectSchema -> fail "Schema hash mismatch, TODO: implement upgrade"
+      CorrectSchema -> return ()
+      OtherSchemaError -> fail "Unexpected query result"
 
 createSchema :: DB -> [String] -> IO ()
 -- Create the initial database schema, asuming a blank slate.

@@ -12,6 +12,7 @@ import Hash
 import Status
 import Progress
 import Pool.Local
+import Pool.Command
 
 import Tree
 
@@ -32,7 +33,7 @@ main = do
 	 statusToIO 1 $ mapM_ runCheck files
 	 -- mapM_ (statusToIO 1 . runCheck) files
       ("ncheck":files@(_:_)) -> newCheck files
-      ["pool", path] -> withLocalPool path $ \_ -> return ()
+      ("pool":xs) -> poolCommand xs
       ["list", path] -> withLocalPool path showBackups
       ["show", path, hash] -> withLocalPool path $ showOne (fromHex hash)
       ["walk", path, hash] -> withLocalPool path $ runWalk (fromHex hash)
