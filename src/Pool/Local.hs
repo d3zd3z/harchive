@@ -14,7 +14,7 @@ import Hash
 import Chunk
 import Chunk.IO
 import Pool
-import Pool.Local.DB
+import DB
 
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -38,7 +38,7 @@ withLocalPool path action = do
    validatePath path
    let dbName = path </> databaseName
    withDatabase dbName $ \db -> do
-      setupSchema db
+      setupSchema db schema
       storedLimit <- queryLimit db
       cf <- scanDataFiles path db
       let state0 = PoolState {
@@ -417,3 +417,24 @@ queryLimit db = do
       "select value from config where key = 'file_limit'" []
    return $ maybeOne rows
 
+-- TODO: The config schema needs to have a unique key.
+schema :: [String]
+schema = [
+   -- The schema needs to match the ldump schema, exactly to avoid schema mismatches.
+   "create table config (key text, value text)",
+   "create table devmap (uuid text unique, dev integer primary key)",
+   "create table dircache (pdev integer, pino integer,\n" ++
+      "\t\tino integer, ctime integer, hash blob,\n" ++
+      "\t\texpire integer)",
+   "create index dircache_devino on dircache(pdev, pino)",
+   "create table hashes(hash blob unique, kind text, file integer,\n" ++
+      "\t\toffset integer)",
+   "create index hashes_hash on hashes(hash)",
+   "create table chunk_files(num integer unique primary key,\n" ++
+      "\t\tsize integer)",
+   "create table backups(hash blob)",
+   "create trigger backup_trigger after insert on hashes\n" ++
+      "\t\twhen new.kind = 'back'\n" ++
+      "\tbegin\n" ++
+      "\t\tinsert into backups values(new.hash);\n" ++
+      "\tend" ]

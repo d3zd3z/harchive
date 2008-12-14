@@ -2,7 +2,7 @@
 -- Local pool database management.
 ----------------------------------------------------------------------
 
-module Pool.Local.DB (
+module DB (
    DB, fromSql, toSql,
    withDatabase,
    commit,
@@ -84,10 +84,10 @@ queryN db convert query values = do
 
 
 ----------------------------------------------------------------------
-setupSchema :: DB -> IO ()
+setupSchema :: DB -> [String] -> IO ()
 -- Check the schema of this database by trying to query for the config
 -- value.
-setupSchema db = do
+setupSchema db schema = do
    rows <- handleSql (const $ return Nothing) $ do
       r <- quickQuery' db
 	 "select value from config where key = 'schema_hash'" []
@@ -95,51 +95,29 @@ setupSchema db = do
    case rows of
       Nothing -> do
 	 -- putStrLn "Creating schema"
-	 createSchema db
+	 createSchema db schema
       Just [] ->
 	 -- Unexpected case.  Database has the row, but no schema_hash
 	 -- added to it.  Probably some other database present.
 	 fail "The database file appears unexpected"
       Just ((sHash:_):_) -> do
 	 let hash = byteStringToHash $ fromSql $ sHash
-	 if hash == schemaHash
+	 if hash == schemaHash schema
 	    then return ()
 	    else fail "Schema hash mismatch, TODO: implement upgrade"
       _ -> fail "Unexpected query result"
 
-createSchema :: DB -> IO ()
+createSchema :: DB -> [String] -> IO ()
 -- Create the initial database schema, asuming a blank slate.
-createSchema db = do
+createSchema db schema = do
    forM_ schema $ \item -> do
       quickQuery db item []
    query0 db ("insert into config values('schema_hash'," ++
-      hashToSql schemaHash ++ ")") []
+      hashToSql (schemaHash schema) ++ ")") []
    commit db
 
--- TODO: The config schema needs to have a unique key.
-schema :: [String]
-schema = [
-   -- The schema needs to match the ldump schema, exactly to avoid schema mismatches.
-   "create table config (key text, value text)",
-   "create table devmap (uuid text unique, dev integer primary key)",
-   "create table dircache (pdev integer, pino integer,\n" ++
-      "\t\tino integer, ctime integer, hash blob,\n" ++
-      "\t\texpire integer)",
-   "create index dircache_devino on dircache(pdev, pino)",
-   "create table hashes(hash blob unique, kind text, file integer,\n" ++
-      "\t\toffset integer)",
-   "create index hashes_hash on hashes(hash)",
-   "create table chunk_files(num integer unique primary key,\n" ++
-      "\t\tsize integer)",
-   "create table backups(hash blob)",
-   "create trigger backup_trigger after insert on hashes\n" ++
-      "\t\twhen new.kind = 'back'\n" ++
-      "\tbegin\n" ++
-      "\t\tinsert into backups values(new.hash);\n" ++
-      "\tend" ]
-
-schemaHash :: Hash
-schemaHash = hashOf combined
+schemaHash :: [String] -> Hash
+schemaHash schema = hashOf combined
    where
       combined = L.pack . (map $ fromIntegral . fromEnum) $ combinedString
       combinedString = intercalate ";" (schema ++ [""])

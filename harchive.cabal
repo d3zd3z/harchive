@@ -45,9 +45,9 @@ library
       HexDump
       Chunk
       Chunk.IO
+      DB
       Pool
       Pool.Local
-      Pool.Local.DB
       Pool.Memory
       Auth
    other-modules:
