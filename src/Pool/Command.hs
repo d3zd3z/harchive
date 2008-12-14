@@ -7,10 +7,10 @@ module Pool.Command (
 ) where
 
 import Auth
-import DB
+import DB.Config
 import Pool.Local
 
-import Control.Monad (unless, when, forM_)
+import Control.Monad (when, forM_)
 
 import System.IO
 import System.Exit
@@ -66,21 +66,9 @@ topUsage = "Usage: harchive pool {options} command args...\n" ++
 
 ----------------------------------------------------------------------
 
-withConfig :: String -> (DB -> IO ()) -> IO ()
-withConfig config action = do
-   doesFileExist config >>= \e -> unless e $
-      die $ "Config file '" ++ config ++ "' not present.\n" ++
-	 "Use 'setup' command to create and/or specify --config"
-   withDatabase config $ \db -> do
-      ss <- checkSchema db schema
-      case ss of
-	 CorrectSchema -> action db
-	 _ -> die $
-	    "Config file '" ++ config ++ "' is not correct."
-
 showInfo :: String -> IO ()
 showInfo config = do
-   withConfig config $ \db -> do
+   withConfig schema config $ \db -> do
       npu <- query3 db "select nick, path, uuid from pools" []
       printf "Pools:\n"
       let poolWidth = maximum $ map (\(u,_,_) -> length u) npu
@@ -103,7 +91,7 @@ setup config = do
 
 addPool :: String -> String -> String -> IO ()
 addPool config nick path = do
-   withConfig config $ \db -> do
+   withConfig schema config $ \db -> do
       uuid <- withLocalPool path poolGetUuid
       query0 db "insert into pools values(?, ?, ?)"
 	 [toSql nick, toSql path, toSql uuid]
@@ -111,7 +99,7 @@ addPool config nick path = do
 
 clientGenerate :: String -> String -> IO ()
 clientGenerate config uuid = do
-   withConfig config $ \db -> do
+   withConfig schema config $ \db -> do
       secret <- genNonce
       query0 db "insert into clients values (?,?)"
 	 [toSql uuid, toSql secret]
@@ -120,7 +108,7 @@ clientGenerate config uuid = do
 
 clientAdd :: String -> String -> String -> IO ()
 clientAdd config uuid secret = do
-   withConfig config $ \db -> do
+   withConfig schema config $ \db -> do
       query0 db "insert into clients values (?,?)"
 	 [toSql uuid, toSql secret]
       commit db

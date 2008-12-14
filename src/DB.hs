@@ -6,7 +6,7 @@ module DB (
    DB, fromSql, toSql,
    withDatabase,
    commit,
-   setupSchema, checkSchema, SchemaStatus(..),
+   Schema, setupSchema, checkSchema, SchemaStatus(..),
 
    query0, query1, query2, query3, queryN,
 
@@ -91,7 +91,7 @@ data SchemaStatus
    | IncorrectSchema
    | OtherSchemaError
 
-checkSchema :: DB -> [String] -> IO SchemaStatus
+checkSchema :: DB -> Schema -> IO SchemaStatus
 -- Check that the schema is correct.  Returns 'Left' with information,
 -- or 'Right ()' if all is well.
 checkSchema db schema = do
@@ -110,7 +110,7 @@ checkSchema db schema = do
 	       else IncorrectSchema
       _ -> OtherSchemaError
 
-setupSchema :: DB -> [String] -> IO ()
+setupSchema :: DB -> Schema -> IO ()
 -- Check the schema of this database by trying to query for the config
 -- value.
 setupSchema db schema = do
@@ -121,7 +121,7 @@ setupSchema db schema = do
       CorrectSchema -> return ()
       OtherSchemaError -> fail "Unexpected query result"
 
-createSchema :: DB -> [String] -> IO ()
+createSchema :: DB -> Schema -> IO ()
 -- Create the initial database schema, asuming a blank slate.
 createSchema db schema = do
    forM_ schema $ \item -> do
@@ -130,8 +130,10 @@ createSchema db schema = do
       hashToSql (schemaHash schema) ++ ")") []
    commit db
 
-schemaHash :: [String] -> Hash
+schemaHash :: Schema -> Hash
 schemaHash schema = hashOf combined
    where
       combined = L.pack . (map $ fromIntegral . fromEnum) $ combinedString
       combinedString = intercalate ";" (schema ++ [""])
+
+type Schema = [String]
