@@ -76,8 +76,7 @@ schema = [
 hello :: String -> String -> IO ()
 hello config nick = do
    withConfig schema config $ \db -> do
-      uuid <- liftM onlyOne $
-	 query1 db "select value from config where key = 'uuid'" []
+      uuid <- getJustConfig db "uuid"
       (host, port, secret) <- liftM onlyOne $
 	 query3 db ("select host, port, secret from pools " ++
 	    "where nick = ?") [toSql nick]

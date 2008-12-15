@@ -83,8 +83,9 @@ setup :: String -> IO ()
 setup config = do
    configSetup schema config $ \db -> do
       configMakeUuid db
-      run db "insert into config values('port', 8933)" []
-      return ()
+      setConfig db "port" (8932::Int)
+      -- run db "insert into config values('port', 8933)" []
+      -- return ()
 
 addPool :: String -> String -> String -> IO ()
 addPool config nick path = do
@@ -122,8 +123,8 @@ schema = [
 startServer :: String -> IO ()
 startServer config = do
    withConfig schema config $ \db -> do
-      port <- liftM onlyOne $ query1 db "select value from config where key = 'port'" []
-      serverUuid <- liftM onlyOne $ query1 db "select value from config where key = 'uuid'" []
+      port <- getJustConfig db "port"
+      serverUuid <- getJustConfig db "uuid"
       serve port $ \handle -> do
 	 secret <- initialHello handle db serverUuid
 	 auth <- authInitiator secret

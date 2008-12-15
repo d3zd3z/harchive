@@ -3,7 +3,7 @@
 ----------------------------------------------------------------------
 
 module DB (
-   DB, fromSql, toSql,
+   DB, fromSql, toSql, SqlValue, SqlType,
    withDatabase,
    commit, run,
    Schema, setupSchema, checkSchema, SchemaStatus(..),

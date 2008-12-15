@@ -6,6 +6,9 @@ module DB.Config (
    withConfig,
    configSetup,
    configMakeUuid,
+
+   setConfig, getConfig, getJustConfig,
+
    module DB
 ) where
 
@@ -49,8 +52,27 @@ configMakeUuid :: DB -> IO ()
 -- Generate a new UUID, and add it to the config table.
 configMakeUuid db = do
    uuid <- genUuid
-   run db "insert into config values('uuid', ?)" [toSql uuid]
+   setConfig db "uuid" uuid
+   -- run db "insert into config values('uuid', ?)" [toSql uuid]
+   -- return ()
+
+setConfig :: (SqlType v) => DB -> String -> v -> IO ()
+-- Set a configuration item to a particular value.  Fails if the item
+-- already exists.
+setConfig db key value = do
+   run db "insert into config values(?,?)" [toSql key, toSql value]
    return ()
+
+getConfig :: (SqlType a) => DB -> String -> IO (Maybe a)
+-- Query for a particular config item.
+getConfig db key = do
+   liftM maybeOne $ query1 db "select value from config where key = ?" [toSql key]
+
+getJustConfig :: (SqlType a) => DB -> String -> IO a
+-- Like getConfig, but raises an exception if the key is not present.
+getJustConfig db key = do
+   val <- getConfig db key
+   maybe (error $ "Config file missing key: " ++ key) return val
 
 die :: String -> IO ()
 die message = hPutStrLn stderr message >> exitFailure
