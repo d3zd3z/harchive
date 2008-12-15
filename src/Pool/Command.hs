@@ -10,6 +10,7 @@ import Auth
 import DB.Config
 import Pool.Local
 import Server
+import Protocol.ClientPool
 
 import Control.Monad (unless, forM_, liftM)
 
@@ -131,6 +132,11 @@ startServer config = do
 	 valid <- runAuthIO handle handle auth
 	 unless valid $ error "Client not authenticated"
 	 putStrLn $ "Client authenticated"
+
+	 msg <- receiveMessage handle :: IO Request
+	 putStrLn $ "Message: " ++ show msg
+	 sendMessage handle ReplyHello
+	 hFlush handle
 
 initialHello :: Handle -> DB -> UUID -> IO String
 initialHello handle db serverUuid = do

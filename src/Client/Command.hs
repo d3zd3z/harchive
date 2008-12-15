@@ -9,6 +9,7 @@ module Client.Command (
 import Auth
 import DB.Config
 import Server
+import Protocol.ClientPool
 
 import Control.Monad
 import System.IO
@@ -85,6 +86,10 @@ hello config nick = do
 	 auth <- authRecipient secret
 	 valid <- runAuthIO handle handle auth
 	 putStrLn $ "Valid: " ++ show valid
+	 sendMessage handle RequestHello
+	 hFlush handle
+	 resp <- receiveMessage handle :: IO Reply
+	 putStrLn $ "Reply: " ++ show resp
 
 initialHello :: Handle -> UUID -> IO String
 initialHello handle clientUuid = do
