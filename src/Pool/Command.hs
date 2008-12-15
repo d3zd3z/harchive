@@ -11,13 +11,12 @@ import DB.Config
 import Pool.Local
 import Server
 
-import Control.Monad (when, unless, forM_, liftM)
+import Control.Monad (unless, forM_, liftM)
 
 import Data.List (foldl')
 import System.IO
 import System.Exit
 import System.Console.GetOpt
-import System.Directory (doesFileExist)
 import Text.Printf (printf)
 
 poolCommand :: [String] -> IO ()
@@ -38,11 +37,6 @@ poolCommand cmd = do
       (_,_,errs) -> do
 	 hPutStrLn stderr $ concat errs ++ usageText
 	 exitFailure
-
-die :: String -> IO ()
-die message = do
-   hPutStrLn stderr message
-   exitFailure
 
 data TopFlag = TopConfig String
    deriving Show
@@ -87,14 +81,10 @@ showInfo config = do
 setup :: String -> IO ()
 -- Setup the initial empty config file.
 setup config = do
-   doesFileExist config >>= \e -> when e $
-      die $ "Config file '" ++ config ++ "' already exists."
-   withDatabase config $ \db -> do
-      setupSchema db schema
-      query0 db "insert into config values('port', 8933)" []
-      uuid <- genUuid
-      query0 db "insert into config values('uuid', ?)" [toSql uuid]
-      commit db
+   configSetup schema config $ \db -> do
+      configMakeUuid db
+      run db "insert into config values('port', 8933)" []
+      return ()
 
 addPool :: String -> String -> String -> IO ()
 addPool config nick path = do

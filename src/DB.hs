@@ -5,7 +5,7 @@
 module DB (
    DB, fromSql, toSql,
    withDatabase,
-   commit,
+   commit, run,
    Schema, setupSchema, checkSchema, SchemaStatus(..),
 
    query0, query1, query2, query3, query4, queryN,

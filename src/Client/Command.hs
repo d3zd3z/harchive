@@ -11,7 +11,6 @@ import DB.Config
 import Server
 
 import Control.Monad
-import System.Directory
 import System.IO
 import System.Exit
 import System.Console.GetOpt
@@ -32,11 +31,6 @@ clientCommand cmd = do
       (_,_,errs) -> do
 	 hPutStrLn stderr $ concat errs ++ usageText
 	 exitFailure
-
-die :: String -> IO ()
-die message = do
-   hPutStrLn stderr message
-   exitFailure
 
 data TopFlag = TopConfig String
    deriving Show
@@ -63,14 +57,7 @@ topUsage = "Usage: harchive client {options} command args...\n" ++
 setup :: String -> IO ()
 -- Setup the initial empty config file.
 setup config = do
-   doesFileExist config >>= \e -> when e $
-      die $ "Config file '" ++ config ++ "' already exists."
-   withDatabase config $ \db -> do
-      setupSchema db schema
-      uuid <- genUuid
-      query0 db "insert into config values('uuid',?)"
-	 [toSql uuid]
-      commit db
+   configSetup schema config configMakeUuid
 
 addPool :: String -> String -> String -> String -> Int -> String -> IO ()
 addPool config nick uuid host port secret = do
