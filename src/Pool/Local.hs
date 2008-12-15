@@ -255,21 +255,6 @@ lookupHash hash = do
 	 put $ state { lastCached = newCache }
 	 return place2
 
-{-
-onlyOne :: [a] -> a
--- Reduce a query result to a single value, generating an error if
--- there is more than one result row.
-onlyOne [a] = a
-onlyOne _ = error "Query is expecting a single result"
--}
-
-maybeOne :: [a] -> Maybe a
--- Reduce a query to a single value, if there is one, Nothing if no
--- rows were returned, or an error if more than 1 was returned.
-maybeOne [] = Nothing
-maybeOne [a] = Just a
-maybeOne _ = error "Query expects zero or one result"
-
 ----------------------------------------------------------------------
 
 validatePath :: FilePath -> IO ()

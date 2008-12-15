@@ -37,6 +37,7 @@ library
       directory >= 1,
       filepath >= 1.1,
       containers >= 0.1,
+      network >= 2.1,
       time >= 1.1.2, old-locale
    ghc-options: -Wall
    extra-libraries: ssl
@@ -50,6 +51,7 @@ library
       Pool.Local
       Pool.Memory
       Auth
+      Server
    other-modules:
       MBox
       Status

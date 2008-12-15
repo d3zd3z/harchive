@@ -9,9 +9,11 @@ module Pool.Command (
 import Auth
 import DB.Config
 import Pool.Local
+import Server
 
-import Control.Monad (when, forM_)
+import Control.Monad (when, unless, forM_, liftM)
 
+import Data.List (foldl')
 import System.IO
 import System.Exit
 import System.Console.GetOpt
@@ -30,6 +32,7 @@ poolCommand cmd = do
 	    ["client", uuid] -> clientGenerate (getTopConfig opts) uuid
 	    ["client", uuid, secret] ->
 	       clientAdd (getTopConfig opts) uuid secret
+	    ["serve"] -> startServer (getTopConfig opts)
 	    _ -> do
 	       hPutStrLn stderr $ usageText
       (_,_,errs) -> do
@@ -71,7 +74,7 @@ showInfo config = do
    withConfig schema config $ \db -> do
       npu <- query3 db "select nick, path, uuid from pools" []
       printf "Pools:\n"
-      let poolWidth = maximum $ map (\(u,_,_) -> length u) npu
+      let poolWidth = foldl' max 4 $ map (\(u,_,_) -> length u) npu
       printf "  %-*s UUID                                 Path\n"
 	 poolWidth "Nick"
       forM_ npu $ \(nick, path, uuid) ->
@@ -79,7 +82,7 @@ showInfo config = do
 	    (nick :: String) (uuid :: String) (path :: String)
       printf "\nClients:\n"
       cl <- query1 db "select uuid from clients" []
-      forM_ cl $ \client -> printf "  %s\n" (client :: String)
+      forM_ cl $ \c -> printf "  %s\n" (c :: String)
 
 setup :: String -> IO ()
 -- Setup the initial empty config file.
@@ -88,6 +91,10 @@ setup config = do
       die $ "Config file '" ++ config ++ "' already exists."
    withDatabase config $ \db -> do
       setupSchema db schema
+      query0 db "insert into config values('port', 8933)" []
+      uuid <- genUuid
+      query0 db "insert into config values('uuid', ?)" [toSql uuid]
+      commit db
 
 addPool :: String -> String -> String -> IO ()
 addPool config nick path = do
@@ -119,3 +126,31 @@ schema = [
    "create table config (key text unique primary key, value text)",
    "create table pools (nick text unique primary key, path text, uuid text)",
    "create table clients (uuid text unique primary key, secret text)" ]
+
+----------------------------------------------------------------------
+
+startServer :: String -> IO ()
+startServer config = do
+   withConfig schema config $ \db -> do
+      port <- liftM onlyOne $ query1 db "select value from config where key = 'port'" []
+      serverUuid <- liftM onlyOne $ query1 db "select value from config where key = 'uuid'" []
+      serve port $ \handle -> do
+	 secret <- initialHello handle db serverUuid
+	 auth <- authInitiator secret
+	 valid <- runAuthIO handle handle auth
+	 unless valid $ error "Client not authenticated"
+	 putStrLn $ "Client authenticated"
+
+initialHello :: Handle -> DB -> UUID -> IO String
+initialHello handle db serverUuid = do
+   hPutStrLn handle $ "server " ++ serverUuid
+   hFlush handle
+   resp <- hSafeGetLine handle 80
+   case words resp of
+      ["client", clientUuid] -> do
+	 secret <- liftM maybeOne $ query1 db "select secret from clients where uuid = ?"
+	    [toSql clientUuid]
+	 maybe fakeSecret return secret
+      _ -> error "Invalid client response"
+   where
+      fakeSecret = genNonce

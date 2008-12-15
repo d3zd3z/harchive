@@ -8,7 +8,9 @@ module DB (
    commit,
    Schema, setupSchema, checkSchema, SchemaStatus(..),
 
-   query0, query1, query2, query3, queryN,
+   query0, query1, query2, query3, query4, queryN,
+
+   onlyOne, maybeOne,
 
    blobToSql, hashToSql
 ) where
@@ -75,6 +77,15 @@ query3 db query values = do
       convert3 [a, b, c] = (fromSql a, fromSql b, fromSql c)
       convert3 _ = error "Expecting 3 columns in result"
 
+query4 :: (SqlType a, SqlType b, SqlType c, SqlType d) =>
+   DB -> String -> [SqlValue] -> IO [(a, b, c, d)]
+-- Perform a query where each row expects four columns.
+query4 db query values = do
+   queryN db convert4 query values
+   where
+      convert4 [a, b, c, d] = (fromSql a, fromSql b, fromSql c, fromSql d)
+      convert4 _ = error "Expecting 4 columns in result"
+
 queryN :: DB -> ([SqlValue] -> a) -> String -> [SqlValue] -> IO [a]
 -- Generalized query with row conversion.  Calls the conversion
 -- function on each row of the result.
@@ -82,6 +93,18 @@ queryN db convert query values = do
    rows <- quickQuery' db query values
    return $ map convert rows
 
+onlyOne :: [a] -> a
+-- Reduce a query result to a single value, generating an error if
+-- there is more than one result row.
+onlyOne [a] = a
+onlyOne _ = error "Query is expecting a single result"
+
+maybeOne :: [a] -> Maybe a
+-- Reduce a query to a single value, if there is one, Nothing if no
+-- rows were returned, or an error if more than 1 was returned.
+maybeOne [] = Nothing
+maybeOne [a] = Just a
+maybeOne _ = error "Query expects zero or one result"
 
 ----------------------------------------------------------------------
 -- Possible kinds of Schema Queries.
