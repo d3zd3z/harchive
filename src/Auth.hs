@@ -18,6 +18,7 @@ import qualified Codec.Binary.Base64 as Base64
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as LChar (pack)
 import qualified Control.Exception as E
 import Data.Bits
 import System.IO
@@ -127,11 +128,11 @@ hmac secret info =
       innerHash = toByteString $ hashOf inner
       inner = iKey `L.append` bData
 
-      bData = L.pack $ (map $ fromIntegral . fromEnum) $ info
-      bSecret = L.pack $ (map $ fromIntegral . fromEnum) $ secret
+      bData = LChar.pack info
+      bSecret = LChar.pack secret
 
-      oKey = L.pack $ map (xor 0x5c) $ L.unpack $ paddedSecret
-      iKey = L.pack $ map (xor 0x36) $ L.unpack $ paddedSecret
+      oKey = L.map (xor 0x5c) paddedSecret
+      iKey = L.map (xor 0x36) paddedSecret
       paddedSecret = bSecret `L.append` (L.replicate padLen 0)
       padLen = (-(L.length bSecret)) .&. fromIntegral (hashBlockLength - 1)
 

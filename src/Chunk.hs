@@ -45,6 +45,7 @@ module Chunk (
 ) where
 
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as LChar (pack)
 -- import qualified Data.ByteString as B
 import Data.Maybe (fromMaybe)
 import HexDump
@@ -101,13 +102,10 @@ stringToChunk kind payload =
       chunkZData = tryCompress rawPayload,
       chunkHash = kpHash kind rawPayload }
    where
-      rawPayload = stringToLazyByteString payload
-
-stringToLazyByteString :: String -> L.ByteString
-stringToLazyByteString = L.pack . (map $ fromIntegral . fromEnum)
+      rawPayload = LChar.pack payload
 
 kpHash :: String -> L.ByteString -> Hash
-kpHash kind payload = hashOf (stringToLazyByteString kind `L.append` payload)
+kpHash kind payload = hashOf (LChar.pack kind `L.append` payload)
 
 -- Give the compressed storage size.
 chunkStoreEstimate :: Chunk -> Int

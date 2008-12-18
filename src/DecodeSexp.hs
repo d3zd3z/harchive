@@ -29,6 +29,7 @@ import qualified Data.ByteString as B
 import Data.Maybe (fromJust)
 import Text.ParserCombinators.Parsec
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as LChar (unpack)
 import Numeric (readDec)
 import System.Locale
 import Data.Time
@@ -54,10 +55,10 @@ decodeMultiChunk =
       decodeMultiAttr . chunkData
 
 decodeAttr :: L.ByteString -> Either ParseError Attr
-decodeAttr = parse attrParser "data" . asString
+decodeAttr = parse attrParser "data" . LChar.unpack
 
 decodeMultiAttr :: L.ByteString -> Either ParseError [Attr]
-decodeMultiAttr = parse multiAttrParser "data" . asString
+decodeMultiAttr = parse multiAttrParser "data" . LChar.unpack
 
 attrField :: Attr -> String -> Maybe SexpValue
 attrField a key =
@@ -121,12 +122,12 @@ decodeAlist :: Int -> L.ByteString -> Either ParseError ([SexpValue], Alist)
 -- Parse a single, simple sexp, and return the first 'n' of the items
 -- as the first of the result pair, and treat the rest of the sexp as
 -- a list of keyword, value pairs, making an alist.
-decodeAlist n = parse (alist n) "data" . asString
+decodeAlist n = parse (alist n) "data" . LChar.unpack
 
 decodeAlists :: Int -> L.ByteString -> Either ParseError [([SexpValue], Alist)]
 -- Parse concatenated alists as in 'decodeAlist', returning the result
 -- as a list.  The same amount is consumed from each item.
-decodeAlists n = parse (alists n) "data" . asString
+decodeAlists n = parse (alists n) "data" . LChar.unpack
 
 newtype Alist = Alist { getAlist :: [(String, SexpValue)] }
    deriving (Show)
@@ -195,6 +196,3 @@ data SexpValue
    | SVInteger { svInteger :: Integer }
    | SVKeyword { svKeyword :: String }
    deriving (Eq, Show)
-
-asString :: L.ByteString -> String
-asString = map (toEnum . fromIntegral) . L.unpack

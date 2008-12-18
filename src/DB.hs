@@ -21,7 +21,7 @@ import Hash
 import Database.HDBC
 import Database.HDBC.Sqlite3
 
-import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as LChar (pack)
 import qualified Data.ByteString as B
 
 import Control.Exception (assert, bracket)
@@ -156,7 +156,7 @@ createSchema db schema = do
 schemaHash :: Schema -> Hash
 schemaHash schema = hashOf combined
    where
-      combined = L.pack . (map $ fromIntegral . fromEnum) $ combinedString
+      combined = LChar.pack combinedString
       combinedString = intercalate ";" (schema ++ [""])
 
 type Schema = [String]
