@@ -9,6 +9,7 @@ module Protocol.ClientPool (
 ) where
 
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Char8 as BC (pack, unpack)
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
@@ -43,7 +44,7 @@ receiveMessage handle = do
    return $ decode packed
 
 data Request
-   = RequestHello
+   = RequestHello String
    deriving (Show)
 
 data Reply
@@ -79,14 +80,29 @@ getPBInt = do
 	    then return num'
 	    else accum num' (shft + 7)
 
+putString :: String -> Put
+putString str = do
+   putPBInt (length str)
+   putByteString (BC.pack str)
+
+getString :: Get String
+getString = do
+   len <- getPBInt
+   str <- getByteString len
+   return $ BC.unpack str
+
 -- TODO: Put type information here (protobuf style).
 instance Binary Request where
-   put RequestHello = putPBInt (4096::Int)
+   put (RequestHello uuid) = do
+      putPBInt (4096::Int)
+      putString uuid
 
    get = do
       key <- getPBInt :: Get Int
       case key of
-	 4096 -> return RequestHello
+	 4096 -> do
+	    uuid <- getString
+	    return $ RequestHello uuid
 	 _ -> error $ "Invalid request value: " ++ show key
 
 instance Binary Reply where

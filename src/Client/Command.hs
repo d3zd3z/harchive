@@ -78,15 +78,15 @@ hello :: String -> String -> IO ()
 hello config nick = do
    withConfig schema config $ \db -> do
       uuid <- getJustConfig db "uuid"
-      (host, port, secret) <- liftM onlyOne $
-	 query3 db ("select host, port, secret from pools " ++
+      (host, port, poolUuid, secret) <- liftM onlyOne $
+	 query4 db ("select host, port, uuid, secret from pools " ++
 	    "where nick = ?") [toSql nick]
       client host port $ \handle -> do
 	 _ <- initialHello handle uuid
 	 auth <- authRecipient secret
 	 valid <- runAuthIO handle handle auth
 	 putStrLn $ "Valid: " ++ show valid
-	 sendMessage handle RequestHello
+	 sendMessage handle $ RequestHello poolUuid
 	 hFlush handle
 	 resp <- receiveMessage handle :: IO Reply
 	 putStrLn $ "Reply: " ++ show resp

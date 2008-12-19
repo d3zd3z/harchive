@@ -84,7 +84,7 @@ setup :: String -> IO ()
 setup config = do
    configSetup schema config $ \db -> do
       configMakeUuid db
-      setConfig db "port" (8932::Int)
+      setConfig db "port" (8933::Int)
       -- run db "insert into config values('port', 8933)" []
       -- return ()
 
@@ -135,8 +135,14 @@ startServer config = do
 
 	 msg <- receiveMessage handle :: IO Request
 	 putStrLn $ "Message: " ++ show msg
-	 sendMessage handle ReplyHello
-	 hFlush handle
+	 case msg of
+	    RequestHello poolUuid -> do
+	       poolPath <- liftM maybeOne $
+		  query1 db "select path from pools where uuid = ?"
+		  [toSql poolUuid]
+	       putStrLn $ "poolPath = " ++ show (poolPath :: Maybe String)
+	       sendMessage handle ReplyHello
+	       hFlush handle
 
 initialHello :: Handle -> DB -> UUID -> IO String
 initialHello handle db serverUuid = do
