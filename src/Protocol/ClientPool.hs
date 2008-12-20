@@ -5,8 +5,12 @@
 module Protocol.ClientPool (
    InitRequest(..),
    InitReply(..),
+   PoolRequest(..),
+   BackupListReply(..),
    sendMessage, receiveMessage
 ) where
+
+import Hash
 
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Char8 as BC (pack, unpack)
@@ -84,6 +88,8 @@ getString = do
    return $ BC.unpack str
 
 ----------------------------------------------------------------------
+-- TODO: Use TH, or a pre-processor to generate all of this marshal
+-- and unmarshal code.
 
 -- Initialization requests.  The first communication must belong to
 -- this type.
@@ -117,3 +123,47 @@ instance Binary InitReply where
       case key of
 	 4097 -> return ReplyHello
 	 _ -> error $ "Invalid reply value: " ++ show key
+
+----------------------------------------------------------------------
+
+-- Basic requests, once we have connected to a given pool.  Most of
+-- these enter a different state for the replies.
+data PoolRequest
+   = RequestBackupList
+   | RequestGoodbye
+
+instance Binary PoolRequest where
+   put RequestBackupList = putPBInt (4200::Int)
+   put RequestGoodbye = putPBInt (4299::Int)
+
+   get = do
+      key <- getPBInt :: Get Int
+      case key of
+	 4200 -> return RequestBackupList
+	 4299 -> return RequestGoodbye
+	 _ -> error $ "Invalid backup request: " ++ show key
+
+data BackupListReply
+   = BackupListNode Hash String String String
+   | BackupListDone
+
+instance Binary BackupListReply where
+   put (BackupListNode hash host volume date) = do
+      putPBInt (4300::Int)
+      putByteString $ toByteString hash
+      putString host
+      putString volume
+      putString date
+   put BackupListDone = putPBInt (4399::Int)
+
+   get = do
+      key <- getPBInt :: Get Int
+      case key of
+	 4300 -> do
+	    hash <- getByteString 20
+	    host <- getString
+	    volume <- getString
+	    date <- getString
+	    return $ BackupListNode (byteStringToHash hash) host volume date
+	 4399 -> return BackupListDone
+	 _ -> error $ "Invalid backup reply: " ++ show key

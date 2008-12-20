@@ -20,7 +20,7 @@ import System.Exit
 import System.Directory
 import System.IO
 
-withConfig :: Schema -> String -> (DB -> IO ()) -> IO ()
+withConfig :: Schema -> String -> (DB -> IO a) -> IO a
 -- Ensure that the named 'configPath' file is properly setup as a
 -- database file with the correct schema.  If so, the action is run
 -- with the opened database.
@@ -35,7 +35,7 @@ withConfig schema configPath action = do
 	 _ -> die $
 	    "Config file '" ++ configPath ++ "' is not correct."
 
-configSetup :: Schema -> String -> (DB -> IO ()) -> IO ()
+configSetup :: Schema -> String -> (DB -> IO a) -> IO a
 -- Initialize an initial configuration based on the specified schema
 -- at the specified path.  The schema will be installed into the
 -- database.  The action will then be invoked to perform any
@@ -45,8 +45,9 @@ configSetup schema configPath action = do
       die $ "Config file '" ++ configPath ++ "' already exists."
    withDatabase configPath $ \db -> do
       setupSchema db schema
-      action db
+      res <- action db
       commit db
+      return res
 
 configMakeUuid :: DB -> IO ()
 -- Generate a new UUID, and add it to the config table.
@@ -74,5 +75,5 @@ getJustConfig db key = do
    val <- getConfig db key
    maybe (error $ "Config file missing key: " ++ key) return val
 
-die :: String -> IO ()
+die :: String -> IO a
 die message = hPutStrLn stderr message >> exitFailure

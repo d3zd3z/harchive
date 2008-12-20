@@ -132,10 +132,32 @@ startServer config = do
 	 poolPathE <- initialHello handle db serverUuid
 	 poolPath <- either failure return poolPathE
 	 putStrLn $ "Pool path: " ++ poolPath
+	 withLocalPool poolPath $ \pool -> serveCommand handle db pool
    where
       failure err = do
 	 putStrLn $ "Server error: " ++ show err
 	 error "Client exit"
+
+serveCommand :: Handle -> DB -> LocalPool -> IO ()
+serveCommand handle db pool = do
+   req <- runProtocol handle receiveMessageP
+   case req of
+      Left err -> error $ "Client failure: " ++ show err
+      Right RequestBackupList -> do
+	 listBackups handle pool
+	 serveCommand handle db pool
+      Right RequestGoodbye -> do
+	 putStrLn "Client exiting"
+
+listBackups :: ChunkReader p => Handle -> p -> IO ()
+listBackups handle pool = do
+   hashes <- poolGetBackups pool
+   runProtocol handle $ do
+      forM_ hashes $ \hash -> do
+	 sendMessageP $ BackupListNode hash "host" "volume" "date"
+      sendMessageP BackupListDone
+      flushP
+   return ()
 
 -- Perform initial client authentication and hello message.  Returns
 -- either an error, or the path to the storage pool to use.

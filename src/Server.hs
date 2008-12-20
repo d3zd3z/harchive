@@ -31,7 +31,7 @@ serve port action = do
    main
 
 -- Connect to a server.
-client :: String -> Int -> (Handle -> IO ()) -> IO ()
+client :: String -> Int -> (Handle -> IO a) -> IO a
 client host port action = do
    connectTo host (PortNumber $ fromIntegral port) >>= action
 

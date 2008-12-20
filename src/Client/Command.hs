@@ -7,6 +7,7 @@ module Client.Command (
 ) where
 
 import Auth
+import Hash
 import DB.Config
 import Server
 import Protocol.ClientPool
@@ -16,6 +17,7 @@ import Control.Monad
 import System.IO
 import System.Exit
 import System.Console.GetOpt
+import Text.Printf (printf)
 
 clientCommand :: [String] -> IO ()
 clientCommand cmd = do
@@ -27,6 +29,7 @@ clientCommand cmd = do
 	    ["pool", nick, uuid, host, port, secret] ->
 	       addPool (getTopConfig opts) nick uuid host (read port) secret
 	    ["hello", poolName] -> hello (getTopConfig opts) poolName
+	    ["list", poolName] -> listBackups (getTopConfig opts) poolName
 	    _ -> do
 	       hPutStrLn stderr $ usageText
 	       exitFailure
@@ -52,6 +55,7 @@ topUsage = "Usage: harchive client {options} command args...\n" ++
    "      setup     - Create client configuration\n" ++
    "      pool nick uuid host port secret\n" ++
    "      hello nick\n" ++
+   "      list nick\n" ++
    "\n" ++
    "Options:\n"
 
@@ -77,6 +81,35 @@ schema = [
 ----------------------------------------------------------------------
 hello :: String -> String -> IO ()
 hello config nick = do
+   withServer config nick $ \_db _handle -> do
+      putStrLn $ "Client hello"
+
+listBackups :: String -> String -> IO ()
+listBackups config nick = do
+   withServer config nick $ \_db handle -> do
+      status <- runProtocol handle $ do
+	 sendMessageP $ RequestBackupList
+	 flushP
+	 getBackupList
+	 sendMessageP $ RequestGoodbye
+	 flushP
+      either failure return status
+   where
+      failure err = do
+	 putStrLn $ "listing failure: " ++ show err
+	 error "Failure"
+
+getBackupList :: Protocol ()
+getBackupList = do
+   entry <- receiveMessageP
+   case entry of
+      BackupListNode hash host volume date -> do
+	 liftIO $ printf "%s %s %s %s\n" (toHex hash) host volume date
+	 getBackupList
+      BackupListDone -> return ()
+
+withServer :: String -> String -> (DB -> Handle -> IO a) -> IO a
+withServer config nick action = do
    withConfig schema config $ \db -> do
       uuid <- getJustConfig db "uuid"
       (host, port, poolUuid, secret) <- liftM onlyOne $
@@ -94,9 +127,11 @@ hello config nick = do
 	    resp <- receiveMessageP :: Protocol InitReply
 	    liftIO $ putStrLn $ "Reply: " ++ show resp
 	 either failure return status
+	 action db handle
    where
       failure err = do
 	 putStrLn $ "Client failure: " ++ show err
+	 error "Client aborted"
 
 idExchange :: UUID -> Protocol String
 idExchange clientUuid = do
