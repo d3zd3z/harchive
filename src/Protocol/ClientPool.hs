@@ -3,8 +3,8 @@
 ----------------------------------------------------------------------
 
 module Protocol.ClientPool (
-   Request(..),
-   Reply(..),
+   InitRequest(..),
+   InitReply(..),
    sendMessage, receiveMessage
 ) where
 
@@ -42,16 +42,6 @@ receiveMessage handle = do
    let len = fromIntegral (decode bHeader :: Word32)
    packed <- L.hGet handle len
    return $ decode packed
-
-data Request
-   = RequestHello String
-   | RequestGoodbye
-   deriving (Show)
-
-data Reply
-   = ReplyHello
-   | ReplyGoodbye
-   deriving (Show)
 
 -- TODO: The Integer might be overkill here.
 putPBInt :: Integral a => a -> Put
@@ -93,14 +83,23 @@ getString = do
    str <- getByteString len
    return $ BC.unpack str
 
+----------------------------------------------------------------------
+
+-- Initialization requests.  The first communication must belong to
+-- this type.
+data InitRequest
+   = RequestHello String
+   deriving (Show)
+
+data InitReply
+   = ReplyHello
+   deriving (Show)
+
 -- TODO: Put type information here (protobuf style).
-instance Binary Request where
+instance Binary InitRequest where
    put (RequestHello uuid) = do
       putPBInt (4096::Int)
       putString uuid
-
-   put (RequestGoodbye) = do
-      putPBInt (4098::Int)
 
    get = do
       key <- getPBInt :: Get Int
@@ -108,16 +107,13 @@ instance Binary Request where
 	 4096 -> do
 	    uuid <- getString
 	    return $ RequestHello uuid
-	 4098 -> return RequestGoodbye
 	 _ -> error $ "Invalid request value: " ++ show key
 
-instance Binary Reply where
+instance Binary InitReply where
    put ReplyHello = putPBInt (4097::Int)
-   put ReplyGoodbye = putPBInt (4099::Int)
 
    get = do
       key <- getPBInt :: Get Int
       case key of
 	 4097 -> return ReplyHello
-	 4099 -> return ReplyGoodbye
 	 _ -> error $ "Invalid reply value: " ++ show key

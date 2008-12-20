@@ -148,7 +148,7 @@ initialHello handle db serverUuid = do
       unless valid $ fail "Client not authenticated"
       liftIO $ putStrLn $ "Client authenticated"
 
-      msg <- receiveMessageP :: Protocol Request
+      msg <- receiveMessageP :: Protocol InitRequest
       liftIO $ putStrLn $ "Message: " ++ show msg
       case msg of
 	 RequestHello poolUuid -> do
@@ -157,7 +157,6 @@ initialHello handle db serverUuid = do
 	    sendMessageP ReplyHello
 	    flushP
 	    return poolPath
-	 _ -> fail "Unexpected initial message from client."
 
 lookupPool :: DB -> UUID -> Protocol String
 lookupPool db uuid = do

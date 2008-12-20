@@ -91,7 +91,7 @@ hello config nick = do
 	    unless valid $ fail "Authentication failure"
 	    sendMessageP $ RequestHello poolUuid
 	    flushP
-	    resp <- receiveMessageP :: Protocol Reply
+	    resp <- receiveMessageP :: Protocol InitReply
 	    liftIO $ putStrLn $ "Reply: " ++ show resp
 	 either failure return status
    where
