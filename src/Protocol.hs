@@ -10,7 +10,7 @@ module Protocol (
    getLineP, putLineP,
    sendMessageP, flushP, receiveMessageP,
 
-   liftIO
+   liftIO, throwError, catchError
 ) where
 
 import qualified Data.ByteString.Lazy as L
@@ -20,11 +20,11 @@ import Control.Monad.Error
 import System.IO
 
 newtype Protocol a = Protocol {
-   unProtocol :: ErrorT String (ReaderT Handle IO) a }
-   deriving (Monad, MonadReader Handle, MonadIO)
+   unProtocol :: ErrorT IOError (ReaderT Handle IO) a }
+   deriving (Monad, MonadReader Handle, MonadIO, MonadError IOError)
 
 -- Reverse arguments from normal so application is easier.
-runProtocol :: Handle -> Protocol a -> IO (Either String a)
+runProtocol :: Handle -> Protocol a -> IO (Either IOError a)
 runProtocol h p = runReaderT (runErrorT $ unProtocol p) h
 
 -- Read a single line from the protocol (with a specified limit).

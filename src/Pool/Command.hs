@@ -128,30 +128,46 @@ startServer config = do
       port <- getJustConfig db "port"
       serverUuid <- getJustConfig db "uuid"
       serve port $ \handle -> do
-	 status <- runProtocol handle $ do
-	    secret <- initialHello db serverUuid
-	    auth <- liftIO $ authInitiator secret
-	    valid <- authProtocol auth
-	    unless valid $ error "Client not authenticated"
-	    liftIO $ putStrLn $ "Client authenticated"
 
-	    msg <- receiveMessageP :: Protocol Request
-	    liftIO $ putStrLn $ "Message: " ++ show msg
-	    case msg of
-	       RequestHello poolUuid -> do
-		  poolPath <- liftM maybeOne $
-		     liftIO $
-		     query1 db "select path from pools where uuid = ?"
-		     [toSql poolUuid]
-		  maybe (error "Unknown pool") (const $ return ()) poolPath
-		  liftIO $ putStrLn $ "poolPath = " ++ show (poolPath :: Maybe String)
-		  sendMessageP ReplyHello
-		  flushP
-	       _ -> error "Unexpected initial message from client."
-	 either error return status
+	 poolPathE <- initialHello handle db serverUuid
+	 poolPath <- either failure return poolPathE
+	 putStrLn $ "Pool path: " ++ poolPath
+   where
+      failure err = do
+	 putStrLn $ "Server error: " ++ show err
+	 error "Client exit"
 
-initialHello :: DB -> UUID -> Protocol String
-initialHello db serverUuid = do
+-- Perform initial client authentication and hello message.  Returns
+-- either an error, or the path to the storage pool to use.
+initialHello :: Handle -> DB -> UUID -> IO (Either IOError String)
+initialHello handle db serverUuid = do
+   runProtocol handle $ do
+      secret <- idExchange db serverUuid
+      auth <- liftIO $ authInitiator secret
+      valid <- authProtocol auth
+      unless valid $ fail "Client not authenticated"
+      liftIO $ putStrLn $ "Client authenticated"
+
+      msg <- receiveMessageP :: Protocol Request
+      liftIO $ putStrLn $ "Message: " ++ show msg
+      case msg of
+	 RequestHello poolUuid -> do
+	    poolPath <- lookupPool db poolUuid
+	    liftIO $ putStrLn $ "poolPath = " ++ poolPath
+	    sendMessageP ReplyHello
+	    flushP
+	    return poolPath
+	 _ -> fail "Unexpected initial message from client."
+
+lookupPool :: DB -> UUID -> Protocol String
+lookupPool db uuid = do
+   p <- liftM maybeOne $ liftIO $ query1 db "select path from pools where uuid = ?"
+      [toSql uuid]
+   maybe (fail $ "Unknown pool: " ++ uuid) return p
+
+-- Exchange UUID's with the client.
+idExchange :: DB -> UUID -> Protocol String
+idExchange db serverUuid = do
    putLineP $ "server " ++ serverUuid
    flushP
    resp <- getLineP 80
@@ -161,5 +177,5 @@ initialHello db serverUuid = do
 	    query1 db "select secret from clients where uuid = ?"
 	    [toSql clientUuid]
 	 maybe fakeSecret return secret
-      _ -> error "Invalid client response"
+      _ -> fail "Invalid client response"
    where fakeSecret = liftIO genNonce

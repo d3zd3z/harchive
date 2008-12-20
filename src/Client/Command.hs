@@ -84,23 +84,26 @@ hello config nick = do
 	    "where nick = ?") [toSql nick]
       client host port $ \handle -> do
 	 status <- runProtocol handle $ do
-	    initialHello uuid
+	    idExchange uuid
 	    auth <- liftIO $ authRecipient secret
 	    valid <- authProtocol auth
 	    liftIO $ putStrLn $ "Valid: " ++ show valid
-	    unless valid $ error "Authentication failure"
+	    unless valid $ fail "Authentication failure"
 	    sendMessageP $ RequestHello poolUuid
 	    flushP
 	    resp <- receiveMessageP :: Protocol Reply
 	    liftIO $ putStrLn $ "Reply: " ++ show resp
-	 either error return status
+	 either failure return status
+   where
+      failure err = do
+	 putStrLn $ "Client failure: " ++ show err
 
-initialHello :: UUID -> Protocol String
-initialHello clientUuid = do
+idExchange :: UUID -> Protocol String
+idExchange clientUuid = do
    req <- getLineP 80
    case words req of
       ["server", serverUuid] -> do
 	 putLineP $ "client " ++ clientUuid
 	 flushP
 	 return serverUuid
-      _ -> error "Invalid message from server"
+      _ -> fail "Invalid message from server"
