@@ -147,6 +147,7 @@ startServer config = do
 		  liftIO $ putStrLn $ "poolPath = " ++ show (poolPath :: Maybe String)
 		  sendMessageP ReplyHello
 		  flushP
+	       _ -> error "Unexpected initial message from client."
 
 initialHello :: DB -> UUID -> Protocol String
 initialHello db serverUuid = do

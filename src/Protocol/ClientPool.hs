@@ -45,10 +45,12 @@ receiveMessage handle = do
 
 data Request
    = RequestHello String
+   | RequestGoodbye
    deriving (Show)
 
 data Reply
    = ReplyHello
+   | ReplyGoodbye
    deriving (Show)
 
 -- TODO: The Integer might be overkill here.
@@ -97,19 +99,25 @@ instance Binary Request where
       putPBInt (4096::Int)
       putString uuid
 
+   put (RequestGoodbye) = do
+      putPBInt (4098::Int)
+
    get = do
       key <- getPBInt :: Get Int
       case key of
 	 4096 -> do
 	    uuid <- getString
 	    return $ RequestHello uuid
+	 4098 -> return RequestGoodbye
 	 _ -> error $ "Invalid request value: " ++ show key
 
 instance Binary Reply where
    put ReplyHello = putPBInt (4097::Int)
+   put ReplyGoodbye = putPBInt (4099::Int)
 
    get = do
       key <- getPBInt :: Get Int
       case key of
 	 4097 -> return ReplyHello
+	 4099 -> return ReplyGoodbye
 	 _ -> error $ "Invalid reply value: " ++ show key
