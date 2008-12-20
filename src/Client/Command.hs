@@ -10,6 +10,7 @@ import Auth
 import DB.Config
 import Server
 import Protocol.ClientPool
+import Protocol
 
 import Control.Monad
 import System.IO
@@ -82,21 +83,23 @@ hello config nick = do
 	 query4 db ("select host, port, uuid, secret from pools " ++
 	    "where nick = ?") [toSql nick]
       client host port $ \handle -> do
-	 _ <- initialHello handle uuid
-	 auth <- authRecipient secret
-	 valid <- runAuthIO handle handle auth
-	 putStrLn $ "Valid: " ++ show valid
-	 sendMessage handle $ RequestHello poolUuid
-	 hFlush handle
-	 resp <- receiveMessage handle :: IO Reply
-	 putStrLn $ "Reply: " ++ show resp
+	 runProtocol handle $ do
+	    initialHello uuid
+	    auth <- liftIO $ authRecipient secret
+	    valid <- authProtocol auth
+	    liftIO $ putStrLn $ "Valid: " ++ show valid
+	    unless valid $ error "Authentication failure"
+	    sendMessageP $ RequestHello poolUuid
+	    flushP
+	    resp <- receiveMessageP :: Protocol Reply
+	    liftIO $ putStrLn $ "Reply: " ++ show resp
 
-initialHello :: Handle -> UUID -> IO String
-initialHello handle clientUuid = do
-   req <- hSafeGetLine handle 80
+initialHello :: UUID -> Protocol String
+initialHello clientUuid = do
+   req <- getLineP 80
    case words req of
       ["server", serverUuid] -> do
-	 hPutStrLn handle $ "client " ++ clientUuid
-	 hFlush handle
+	 putLineP $ "client " ++ clientUuid
+	 flushP
 	 return serverUuid
       _ -> error "Invalid message from server"

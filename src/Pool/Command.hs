@@ -11,6 +11,7 @@ import DB.Config
 import Pool.Local
 import Server
 import Protocol.ClientPool
+import Protocol
 
 import Control.Monad (unless, forM_, liftM)
 
@@ -127,33 +128,36 @@ startServer config = do
       port <- getJustConfig db "port"
       serverUuid <- getJustConfig db "uuid"
       serve port $ \handle -> do
-	 secret <- initialHello handle db serverUuid
-	 auth <- authInitiator secret
-	 valid <- runAuthIO handle handle auth
-	 unless valid $ error "Client not authenticated"
-	 putStrLn $ "Client authenticated"
+	 runProtocol handle $ do
+	    secret <- initialHello db serverUuid
+	    auth <- liftIO $ authInitiator secret
+	    valid <- authProtocol auth
+	    unless valid $ error "Client not authenticated"
+	    liftIO $ putStrLn $ "Client authenticated"
 
-	 msg <- receiveMessage handle :: IO Request
-	 putStrLn $ "Message: " ++ show msg
-	 case msg of
-	    RequestHello poolUuid -> do
-	       poolPath <- liftM maybeOne $
-		  query1 db "select path from pools where uuid = ?"
-		  [toSql poolUuid]
-	       putStrLn $ "poolPath = " ++ show (poolPath :: Maybe String)
-	       sendMessage handle ReplyHello
-	       hFlush handle
+	    msg <- receiveMessageP :: Protocol Request
+	    liftIO $ putStrLn $ "Message: " ++ show msg
+	    case msg of
+	       RequestHello poolUuid -> do
+		  poolPath <- liftM maybeOne $
+		     liftIO $
+		     query1 db "select path from pools where uuid = ?"
+		     [toSql poolUuid]
+		  maybe (error "Unknown pool") (const $ return ()) poolPath
+		  liftIO $ putStrLn $ "poolPath = " ++ show (poolPath :: Maybe String)
+		  sendMessageP ReplyHello
+		  flushP
 
-initialHello :: Handle -> DB -> UUID -> IO String
-initialHello handle db serverUuid = do
-   hPutStrLn handle $ "server " ++ serverUuid
-   hFlush handle
-   resp <- hSafeGetLine handle 80
+initialHello :: DB -> UUID -> Protocol String
+initialHello db serverUuid = do
+   putLineP $ "server " ++ serverUuid
+   flushP
+   resp <- getLineP 80
    case words resp of
       ["client", clientUuid] -> do
-	 secret <- liftM maybeOne $ query1 db "select secret from clients where uuid = ?"
+	 secret <- liftM maybeOne $ liftIO $
+	    query1 db "select secret from clients where uuid = ?"
 	    [toSql clientUuid]
 	 maybe fakeSecret return secret
       _ -> error "Invalid client response"
-   where
-      fakeSecret = genNonce
+   where fakeSecret = liftIO genNonce

@@ -6,13 +6,14 @@ module Auth (
    UUID,
    genNonce, genUuid,
    authInitiator, authRecipient,
-   runAuthIO,
+   runAuthIO, authProtocol,
 
    -- For testing.
    AuthState(..)
 ) where
 
 import Hash
+import Protocol
 
 import qualified Codec.Binary.Base64 as Base64
 
@@ -50,11 +51,30 @@ runAuthIO reader writer (AuthMore msg next) = do
    resp <- hGetLine reader  -- TODO: Use a bounded readline.
    runAuthIO reader writer (next resp)
 
+authProtocol :: AuthState -> Protocol Bool
+-- Run the authentication given by AuthState in the Protocol monad.
+-- Returns true if the authentication succeeded.
+authProtocol AuthFail = return False
+authProtocol (AuthGood msg) = do
+   maybe (return ()) outputMessageP msg
+   return True
+authProtocol (AuthMore msg next) = do
+   liftIO $ putStrLn $ "Auth: Send: " ++ show msg
+   maybe (return ()) outputMessageP msg
+   resp <- getLineP 128
+   liftIO $ putStrLn $ "Auth: Recv: " ++ show resp
+   authProtocol $ next resp
+
 outputMessage :: Handle -> String -> IO ()
 -- Output a message to the handle.
 outputMessage fd msg = do
    hPutStrLn fd msg
    hFlush fd
+
+outputMessageP :: String -> Protocol ()
+outputMessageP msg = do
+   putLineP msg
+   flushP
 
 ----------------------------------------------------------------------
 
