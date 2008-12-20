@@ -16,15 +16,16 @@ module Protocol (
 import qualified Data.ByteString.Lazy as L
 import Data.Binary
 import Control.Monad.Reader
+import Control.Monad.Error
 import System.IO
 
 newtype Protocol a = Protocol {
-   unProtocol :: ReaderT Handle IO a }
+   unProtocol :: ErrorT String (ReaderT Handle IO) a }
    deriving (Monad, MonadReader Handle, MonadIO)
 
 -- Reverse arguments from normal so application is easier.
-runProtocol :: Handle -> Protocol a -> IO a
-runProtocol h p = runReaderT (unProtocol p) h
+runProtocol :: Handle -> Protocol a -> IO (Either String a)
+runProtocol h p = runReaderT (runErrorT $ unProtocol p) h
 
 -- Read a single line from the protocol (with a specified limit).
 getLineP :: Int -> Protocol String

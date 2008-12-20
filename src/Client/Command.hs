@@ -83,7 +83,7 @@ hello config nick = do
 	 query4 db ("select host, port, uuid, secret from pools " ++
 	    "where nick = ?") [toSql nick]
       client host port $ \handle -> do
-	 runProtocol handle $ do
+	 status <- runProtocol handle $ do
 	    initialHello uuid
 	    auth <- liftIO $ authRecipient secret
 	    valid <- authProtocol auth
@@ -93,6 +93,7 @@ hello config nick = do
 	    flushP
 	    resp <- receiveMessageP :: Protocol Reply
 	    liftIO $ putStrLn $ "Reply: " ++ show resp
+	 either error return status
 
 initialHello :: UUID -> Protocol String
 initialHello clientUuid = do

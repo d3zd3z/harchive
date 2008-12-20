@@ -128,7 +128,7 @@ startServer config = do
       port <- getJustConfig db "port"
       serverUuid <- getJustConfig db "uuid"
       serve port $ \handle -> do
-	 runProtocol handle $ do
+	 status <- runProtocol handle $ do
 	    secret <- initialHello db serverUuid
 	    auth <- liftIO $ authInitiator secret
 	    valid <- authProtocol auth
@@ -148,6 +148,7 @@ startServer config = do
 		  sendMessageP ReplyHello
 		  flushP
 	       _ -> error "Unexpected initial message from client."
+	 either error return status
 
 initialHello :: DB -> UUID -> Protocol String
 initialHello db serverUuid = do
