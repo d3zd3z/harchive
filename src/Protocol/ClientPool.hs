@@ -12,10 +12,12 @@ module Protocol.ClientPool (
    sendMessage, receiveMessage
 ) where
 
+import Chunk
 import Harchive.Store.Sexp
 import Hash
 import Protocol.Packing
 import Protocol.Attr ()
+import Protocol.Chunk ()
 
 import qualified Data.ByteString.Lazy as L
 import Data.Binary
@@ -25,6 +27,8 @@ import Data.Word
 import Data.Time
 
 import System.IO
+
+import Control.Monad (liftM)
 
 -- From the perspective of this protocol description, a message sent
 -- from the file client to the pool server are always considered to be
@@ -188,17 +192,18 @@ instance Binary RestoreReply where
 
 -- Possible responses within a file.
 data FileDataReply
-   = FileDataChunk ()
+   = FileDataChunk Chunk
    | FileDataDone
 
 instance Binary FileDataReply where
    put FileDataDone = putPBInt (40::Int)
-   put (FileDataChunk _) = do
+   put (FileDataChunk chunk) = do
       putPBInt (41::Int)
+      put chunk
 
    get = do
       key <- getPBInt :: Get Int
       case key of
 	 40 -> return FileDataDone
-	 41 -> return $ FileDataChunk ()
+	 41 -> liftM FileDataChunk $ get
 	 _ -> error $ "Invalid reply: " ++ show key

@@ -188,7 +188,7 @@ restoreBackup handle pool hash = do
 	       -- liftIO $ putStrLn $ "Reg: " ++ show atts
 	       sendMessageP $ RestoreOpen path atts
 	       liftIO $ forEachChunk pool (justField atts "HASH") $ \chunk -> do
-		  runProtocol handle $ sendMessageP $ FileDataChunk ()
+		  runProtocol handle $ sendMessageP $ FileDataChunk chunk
 		  return ()
 	       sendMessageP $ FileDataDone
 	    return ()
