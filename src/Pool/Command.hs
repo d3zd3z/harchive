@@ -12,6 +12,7 @@ import Pool.Local
 import Server
 import Protocol.ClientPool
 import Protocol
+import Harchive.Store.Backup
 
 import Control.Monad (unless, forM_, liftM)
 
@@ -154,7 +155,11 @@ listBackups handle pool = do
    hashes <- poolGetBackups pool
    runProtocol handle $ do
       forM_ hashes $ \hash -> do
-	 sendMessageP $ BackupListNode hash "host" "volume" "date"
+	 info <- liftIO $ getBackupInfo pool hash
+	 maybe (return ()) (\i ->
+	    sendMessageP $ BackupListNode hash
+	       (biHost i) (biBackup i) (biStartTime i))
+	    info
       sendMessageP BackupListDone
       flushP
    return ()

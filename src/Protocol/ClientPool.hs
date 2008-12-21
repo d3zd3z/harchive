@@ -19,6 +19,7 @@ import Data.Binary.Get
 import Data.Binary.Put
 import Data.Bits
 import Data.Word
+import Data.Time
 
 import Control.Monad (liftM)
 
@@ -144,7 +145,7 @@ instance Binary PoolRequest where
 	 _ -> error $ "Invalid backup request: " ++ show key
 
 data BackupListReply
-   = BackupListNode Hash String String String
+   = BackupListNode Hash String String UTCTime
    | BackupListDone
 
 instance Binary BackupListReply where
@@ -153,7 +154,10 @@ instance Binary BackupListReply where
       putByteString $ toByteString hash
       putString host
       putString volume
-      putString date
+      -- This ends up being fairly large, since UTC time uses
+      -- picoseconds.
+      putPBInt $ fromEnum $ utctDay date
+      putPBInt $ fromEnum $ utctDayTime date
    put BackupListDone = putPBInt (4399::Int)
 
    get = do
@@ -163,7 +167,9 @@ instance Binary BackupListReply where
 	    hash <- getByteString 20
 	    host <- getString
 	    volume <- getString
-	    date <- getString
+	    day <- getPBInt
+	    dayTime <- getPBInt
+	    let date = UTCTime (toEnum day) (toEnum dayTime)
 	    return $ BackupListNode (byteStringToHash hash) host volume date
 	 4399 -> return BackupListDone
 	 _ -> error $ "Invalid backup reply: " ++ show key

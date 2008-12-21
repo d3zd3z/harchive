@@ -13,6 +13,8 @@ import Server
 import Protocol.ClientPool
 import Protocol
 
+import Data.Time
+import System.Locale
 import Control.Monad
 import System.IO
 import System.Exit
@@ -101,10 +103,15 @@ listBackups config nick = do
 
 getBackupList :: Protocol ()
 getBackupList = do
+   tz <- liftIO getCurrentTimeZone
    entry <- receiveMessageP
    case entry of
       BackupListNode hash host volume date -> do
-	 liftIO $ printf "%s %s %s %s\n" (toHex hash) host volume date
+	 let local = utcToLocalTime tz date
+	 liftIO $ printf "%s %-10s %-15s %s\n" (toHex hash)
+	    (take 10 host)
+	    (take 15 volume)
+	    (formatTime defaultTimeLocale "%F %H:%M" local)
 	 getBackupList
       BackupListDone -> return ()
 
