@@ -5,6 +5,7 @@
 module Tree (
    walk, walkLazy, walkTree,
    walkHashes,
+   forEachChunk,
    TreeOp(..),
    module Harchive.Store.Sexp
 ) where
@@ -63,6 +64,20 @@ walkHashes pool rootHash act = do
 	       let payload = fromJust payload_
 	       mapM_ regularFile (indirectHashes $ chunkData payload)
 	    k -> error $ "Implement walking for: " ++ k
+
+-- |Call 'act' with each chunk of file data.
+-- TODO: Better error handling.
+forEachChunk :: ChunkReader p => p -> Hash -> (Chunk -> IO ()) -> IO ()
+forEachChunk pool hash act = do
+   loop hash
+   where
+      loop h = do
+	 chunk <- liftM fromJust $ poolReadChunk pool h
+	 case chunkKind chunk of
+	    "blob" -> act chunk
+	    ['i','n','d',n] | n >= '0' && n <= '9' -> do
+	       mapM_ loop (indirectHashes $ chunkData chunk)
+	    k -> error $ "Unknown chunk type in fileadta: " ++ k
 
 -- Let's see what we can do.  Starting with the hash of a directory,
 -- let's recursively walk through it, printing the tree.  It's a

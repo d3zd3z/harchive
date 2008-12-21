@@ -174,9 +174,30 @@ restoreBackup :: ChunkReader p => Handle -> p -> Hash -> IO ()
 restoreBackup handle pool hash = do
    -- TODO: Error handling.
    info <- liftM fromJust $ getBackupInfo pool hash
-   putStrLn $ show info
+   -- putStrLn $ show info
    walkTree pool (biHash info) $ \node -> do
-      putStrLn $ show node
+      case node of
+	 TreeEnter path atts -> do
+	    runProtocol handle $ sendMessageP $ RestoreEnter path atts
+	    return ()
+	 TreeLeave path atts -> do
+	    runProtocol handle $ sendMessageP $ RestoreLeave path atts
+	    return ()
+	 TreeReg path atts _ -> do
+	    runProtocol handle $ do
+	       -- liftIO $ putStrLn $ "Reg: " ++ show atts
+	       sendMessageP $ RestoreOpen path atts
+	       liftIO $ forEachChunk pool (justField atts "HASH") $ \chunk -> do
+		  runProtocol handle $ sendMessageP $ FileDataChunk ()
+		  return ()
+	       sendMessageP $ FileDataDone
+	    return ()
+	 _ -> putStrLn $ "TODO: " ++ show node
+   runProtocol handle $ do
+      sendMessageP $ RestoreLeave "." (biInfo info)
+      sendMessageP $ RestoreDone
+      flushP
+   return ()
 
 -- Perform initial client authentication and hello message.  Returns
 -- either an error, or the path to the storage pool to use.

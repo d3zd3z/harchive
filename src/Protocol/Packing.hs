@@ -7,7 +7,6 @@ module Protocol.Packing (
    putString, getString
 ) where
 
-import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
 import Data.Bits

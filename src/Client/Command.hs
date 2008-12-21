@@ -13,6 +13,7 @@ import Server
 import Protocol.ClientPool
 import Protocol
 import Progress (boring)
+import Harchive.Store.Sexp
 
 import Data.List (sort, sortBy)
 import Data.Ord (comparing)
@@ -22,6 +23,7 @@ import Control.Monad
 import System.IO
 import System.Exit
 import System.Console.GetOpt
+import System.FilePath
 import Text.Printf (printf)
 
 clientCommand :: [String] -> IO ()
@@ -148,9 +150,42 @@ restoreBackup config nick hash path = do
    withServer config nick $ \_db handle -> do
       runProtocol handle $ do
 	 sendMessageP $ RequestRestore (fromHex hash)
+	 flushP
+	 processRestore path
 	 sendMessageP $ RequestGoodbye
 	 flushP
       return ()
+
+processRestore :: String -> Protocol ()
+processRestore path = do
+   msg <- receiveMessageP
+   case msg of
+      RestoreEnter name _atts -> do
+	 liftIO $ putStrLn $ "mkdir " ++ path </> name
+      RestoreLeave name _atts -> do
+	 liftIO $ putStrLn $ "setdirattr " ++ path </> name
+      RestoreOpen name atts -> do
+	 restoreFile (path </> name) atts
+      RestoreDone -> return ()
+   case msg of
+      RestoreDone -> return ()
+      _ -> processRestore path
+
+restoreFile :: String -> Attr -> Protocol ()
+restoreFile path _atts = do
+   liftIO $ putStrLn $ "reg " ++ path
+   loop
+   where
+      loop = do
+	 msg <- receiveMessageP
+	 case msg of
+	    FileDataChunk _ -> do
+	       liftIO $ putStr "."
+	       liftIO $ hFlush stdout
+	       loop
+	    FileDataDone -> do
+	       liftIO $ putStrLn ""
+	       return ()
 
 ----------------------------------------------------------------------
 

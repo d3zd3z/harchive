@@ -7,11 +7,15 @@ module Protocol.ClientPool (
    InitReply(..),
    PoolRequest(..),
    BackupListReply(..),
+   RestoreReply(..),
+   FileDataReply(..),
    sendMessage, receiveMessage
 ) where
 
+import Harchive.Store.Sexp
 import Hash
 import Protocol.Packing
+import Protocol.Attr ()
 
 import qualified Data.ByteString.Lazy as L
 import Data.Binary
@@ -142,3 +146,59 @@ instance Binary BackupListReply where
 
 ----------------------------------------------------------------------
 -- Response from RequestRestore
+data RestoreReply
+   = RestoreEnter String Attr
+   | RestoreLeave String Attr
+   | RestoreOpen String Attr
+   | RestoreDone
+
+instance Binary RestoreReply where
+   -- TODO: Factor these.
+   put (RestoreEnter path atts) = do
+      putPBInt (10::Int)
+      putString path
+      put atts
+   put (RestoreLeave path atts) = do
+      putPBInt (11::Int)
+      putString path
+      put atts
+   put (RestoreOpen path atts) = do
+      putPBInt (12::Int)
+      putString path
+      put atts
+   put RestoreDone = putPBInt (19::Int)
+
+   get = do
+      key <- getPBInt :: Get Int
+      case key of
+	 10 -> do
+	    path <- getString
+	    atts <- get
+	    return $ RestoreEnter path atts
+	 11 -> do
+	    path <- getString
+	    atts <- get
+	    return $ RestoreLeave path atts
+	 12 -> do
+	    path <- getString
+	    atts <- get
+	    return $ RestoreOpen path atts
+	 19 -> return RestoreDone
+	 _ -> error $ "Invalid restore reply: " ++ show key
+
+-- Possible responses within a file.
+data FileDataReply
+   = FileDataChunk ()
+   | FileDataDone
+
+instance Binary FileDataReply where
+   put FileDataDone = putPBInt (40::Int)
+   put (FileDataChunk _) = do
+      putPBInt (41::Int)
+
+   get = do
+      key <- getPBInt :: Get Int
+      case key of
+	 40 -> return FileDataDone
+	 41 -> return $ FileDataChunk ()
+	 _ -> error $ "Invalid reply: " ++ show key
