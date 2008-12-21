@@ -13,6 +13,8 @@ import Server
 import Protocol.ClientPool
 import Protocol
 
+import Data.List (sort, sortBy)
+import Data.Ord (comparing)
 import Data.Time
 import System.Locale
 import Control.Monad
@@ -20,9 +22,6 @@ import System.IO
 import System.Exit
 import System.Console.GetOpt
 import Text.Printf (printf)
-
-import Data.Map (Map)
-import qualified Data.Map as Map
 
 clientCommand :: [String] -> IO ()
 clientCommand cmd = do
@@ -34,7 +33,8 @@ clientCommand cmd = do
 	    ["pool", nick, uuid, host, port, secret] ->
 	       addPool (getTopConfig opts) nick uuid host (read port) secret
 	    ["hello", poolName] -> hello (getTopConfig opts) poolName
-	    ["list", poolName] -> listBackups (getTopConfig opts) poolName
+	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
+	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
 	    _ -> do
 	       hPutStrLn stderr $ usageText
 	       exitFailure
@@ -60,7 +60,7 @@ topUsage = "Usage: harchive client {options} command args...\n" ++
    "      setup     - Create client configuration\n" ++
    "      pool nick uuid host port secret\n" ++
    "      hello nick\n" ++
-   "      list nick\n" ++
+   "      list {--short} nick\n" ++
    "\n" ++
    "Options:\n"
 
@@ -89,13 +89,16 @@ hello config nick = do
    withServer config nick $ \_db _handle -> do
       putStrLn $ "Client hello"
 
-listBackups :: String -> String -> IO ()
-listBackups config nick = do
+type BackupItem = (String, String, UTCTime, Hash)
+
+listBackups :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
+listBackups config nick shorten = do
    withServer config nick $ \_db handle -> do
       status <- runProtocol handle $ do
 	 sendMessageP $ RequestBackupList
 	 flushP
-	 showBackupList
+	 backups <- getBackupList
+	 liftIO $ showBackupList $ sortBy (comparing timeOf) $ shorten $ sort backups
 	 sendMessageP $ RequestGoodbye
 	 flushP
       either failure return status
@@ -103,30 +106,37 @@ listBackups config nick = do
       failure err = do
 	 putStrLn $ "listing failure: " ++ show err
 	 error "Failure"
+      timeOf (_, _, time, _) = time
 
-showBackupList :: Protocol ()
-showBackupList = do
-   tz <- liftIO getCurrentTimeZone
-   backups <- getBackupList Map.empty
-   liftIO $ forM_ (Map.assocs backups) $ \((host, volume), (hash, date)) -> do
+-- Given a sorted list of backups, return only the newest backup of
+-- each host/volume combination.
+latestBackup :: [BackupItem] -> [BackupItem]
+latestBackup ((h1, v1, _, _) : bb@(h2, v2, _, _) : xs)
+   | h1 == h2 && v1 == v2   = latestBackup (bb : xs)
+latestBackup (x:xs) = x : latestBackup xs
+latestBackup [] = []
+
+showBackupList :: [BackupItem] -> IO ()
+showBackupList backups = do
+   tz <- getCurrentTimeZone
+   forM_ backups $ \ (host, volume, date, hash) -> do
       let local = utcToLocalTime tz date
-      printf "%s %-10s %-15s %s\n" (toHex hash)
+      printf "%s %-10s %-20s %s\n" (toHex hash)
 	 (take 10 host)
-	 (take 10 volume)
+	 (take 20 volume)
 	 (formatTime defaultTimeLocale "%F %H:%M" local)
 
-getBackupList :: (Map.Map (String, String) (Hash, UTCTime)) ->
-   Protocol (Map.Map (String, String) (Hash, UTCTime))
-getBackupList accum = do
+-- Retrieve the list of backups from the server.  The order of the
+-- tuple is carefully chosen for sorting purposes, currently: Host,
+-- Volume, Date, and finally hash.
+getBackupList :: Protocol [BackupItem]
+getBackupList = do
    entry <- receiveMessageP
    case entry of
       BackupListNode hash host volume date -> do
-	 let nodes = Map.insertWith' newer (host, volume) (hash, date) accum
-	 getBackupList nodes
-      BackupListDone -> return accum
-   where
-      newer aa@(_, a) bb@(_, b) | a < b = bb
-	 | otherwise = aa
+	 rest <- getBackupList
+	 return $ (host, volume, date, hash) : rest
+      BackupListDone -> return []
 
 ----------------------------------------------------------------------
 
