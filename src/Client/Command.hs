@@ -21,6 +21,9 @@ import System.Exit
 import System.Console.GetOpt
 import Text.Printf (printf)
 
+import Data.Map (Map)
+import qualified Data.Map as Map
+
 clientCommand :: [String] -> IO ()
 clientCommand cmd = do
    let usageText = usageInfo topUsage topOptions
@@ -92,7 +95,7 @@ listBackups config nick = do
       status <- runProtocol handle $ do
 	 sendMessageP $ RequestBackupList
 	 flushP
-	 getBackupList
+	 showBackupList
 	 sendMessageP $ RequestGoodbye
 	 flushP
       either failure return status
@@ -101,19 +104,31 @@ listBackups config nick = do
 	 putStrLn $ "listing failure: " ++ show err
 	 error "Failure"
 
-getBackupList :: Protocol ()
-getBackupList = do
+showBackupList :: Protocol ()
+showBackupList = do
    tz <- liftIO getCurrentTimeZone
+   backups <- getBackupList Map.empty
+   liftIO $ forM_ (Map.assocs backups) $ \((host, volume), (hash, date)) -> do
+      let local = utcToLocalTime tz date
+      printf "%s %-10s %-15s %s\n" (toHex hash)
+	 (take 10 host)
+	 (take 10 volume)
+	 (formatTime defaultTimeLocale "%F %H:%M" local)
+
+getBackupList :: (Map.Map (String, String) (Hash, UTCTime)) ->
+   Protocol (Map.Map (String, String) (Hash, UTCTime))
+getBackupList accum = do
    entry <- receiveMessageP
    case entry of
       BackupListNode hash host volume date -> do
-	 let local = utcToLocalTime tz date
-	 liftIO $ printf "%s %-10s %-15s %s\n" (toHex hash)
-	    (take 10 host)
-	    (take 15 volume)
-	    (formatTime defaultTimeLocale "%F %H:%M" local)
-	 getBackupList
-      BackupListDone -> return ()
+	 let nodes = Map.insertWith' newer (host, volume) (hash, date) accum
+	 getBackupList nodes
+      BackupListDone -> return accum
+   where
+      newer aa@(_, a) bb@(_, b) | a < b = bb
+	 | otherwise = aa
+
+----------------------------------------------------------------------
 
 withServer :: String -> String -> (DB -> Handle -> IO a) -> IO a
 withServer config nick action = do
