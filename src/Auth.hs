@@ -59,10 +59,10 @@ authProtocol (AuthGood msg) = do
    maybe (return ()) outputMessageP msg
    return True
 authProtocol (AuthMore msg next) = do
-   liftIO $ putStrLn $ "Auth: Send: " ++ show msg
+   -- liftIO $ putStrLn $ "Auth: Send: " ++ show msg
    maybe (return ()) outputMessageP msg
    resp <- getLineP 128
-   liftIO $ putStrLn $ "Auth: Recv: " ++ show resp
+   -- liftIO $ putStrLn $ "Auth: Recv: " ++ show resp
    authProtocol $ next resp
 
 outputMessage :: Handle -> String -> IO ()

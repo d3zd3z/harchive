@@ -152,12 +152,13 @@ withServer config nick action = do
 	    idExchange uuid
 	    auth <- liftIO $ authRecipient secret
 	    valid <- authProtocol auth
-	    liftIO $ putStrLn $ "Valid: " ++ show valid
+	    -- liftIO $ putStrLn $ "Valid: " ++ show valid
 	    unless valid $ fail "Authentication failure"
 	    sendMessageP $ RequestHello poolUuid
 	    flushP
-	    resp <- receiveMessageP :: Protocol InitReply
-	    liftIO $ putStrLn $ "Reply: " ++ show resp
+	    _resp <- receiveMessageP :: Protocol InitReply
+	    return () -- Only one possible message.
+	    -- liftIO $ putStrLn $ "Reply: " ++ show resp
 	 either failure return status
 	 action db handle
    where

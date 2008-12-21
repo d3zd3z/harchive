@@ -132,7 +132,7 @@ startServer config = do
 
 	 poolPathE <- initialHello handle db serverUuid
 	 poolPath <- either failure return poolPathE
-	 putStrLn $ "Pool path: " ++ poolPath
+	 -- putStrLn $ "Pool path: " ++ poolPath
 	 withLocalPool poolPath $ \pool -> serveCommand handle db pool
    where
       failure err = do
@@ -176,11 +176,11 @@ initialHello handle db serverUuid = do
       liftIO $ putStrLn $ "Client authenticated"
 
       msg <- receiveMessageP :: Protocol InitRequest
-      liftIO $ putStrLn $ "Message: " ++ show msg
+      -- liftIO $ putStrLn $ "Message: " ++ show msg
       case msg of
 	 RequestHello poolUuid -> do
 	    poolPath <- lookupPool db poolUuid
-	    liftIO $ putStrLn $ "poolPath = " ++ poolPath
+	    -- liftIO $ putStrLn $ "poolPath = " ++ poolPath
 	    sendMessageP ReplyHello
 	    flushP
 	    return poolPath
