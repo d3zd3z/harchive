@@ -3,7 +3,7 @@
 ----------------------------------------------------------------------
 
 module Tree (
-   walk, walkLazy,
+   walk, walkLazy, walkTree,
    walkHashes,
    TreeOp(..),
    module Harchive.Store.Sexp
@@ -77,11 +77,28 @@ data TreeOp
    | TreeReg {
       treeOpPath :: String, treeOpAttr :: Attr,
       treeOpKind :: String }
+   deriving (Show)
 
 -- Note the assymetry of the root directory here.  The attributes of a
 -- directory are stored outside of that directory in the parent, so
 -- the root's attributes are stored in the backup record.
 
+-- Walk the tree, calling the operation for each node.  TODO: The code
+-- isn't really complicated enough to warrant forking.
+walkTree :: ChunkReader p => p -> Hash -> (TreeOp -> IO ()) -> IO ()
+walkTree pool hash action = do
+   getNode <- walk pool hash
+   loop getNode
+   where
+      loop getNode = do
+	 item <- getNode
+	 case item of
+	    TreeEOF -> return ()
+	    _ -> do
+	       action item
+	       loop getNode
+
+----------------------------------------------------------------------
 walkLazy :: ChunkReader p => p -> Hash -> IO [TreeOp]
 -- Perform the walk, and return a list which will be evaluated lazily.
 -- The list never contains a TreeEOF, since the end of list is

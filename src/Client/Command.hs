@@ -36,6 +36,7 @@ clientCommand cmd = do
 	    ["hello", poolName] -> hello (getTopConfig opts) poolName
 	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
+	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
 	    _ -> do
 	       hPutStrLn stderr $ usageText
 	       exitFailure
@@ -62,6 +63,7 @@ topUsage = "Usage: harchive client {options} command args...\n" ++
    "      pool nick uuid host port secret\n" ++
    "      hello nick\n" ++
    "      list {--short} nick\n" ++
+   "      restore nick hash path\n" ++
    "\n" ++
    "Options:\n"
 
@@ -138,6 +140,17 @@ getBackupList = do
 	 rest <- getBackupList
 	 return $ (host, volume, date, hash) : rest
       BackupListDone -> return []
+
+----------------------------------------------------------------------
+-- Restore a backup to the specified path.
+restoreBackup :: String -> String -> String -> String -> IO ()
+restoreBackup config nick hash path = do
+   withServer config nick $ \_db handle -> do
+      runProtocol handle $ do
+	 sendMessageP $ RequestRestore (fromHex hash)
+	 sendMessageP $ RequestGoodbye
+	 flushP
+      return ()
 
 ----------------------------------------------------------------------
 

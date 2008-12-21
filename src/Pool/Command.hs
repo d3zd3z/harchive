@@ -7,9 +7,11 @@ module Pool.Command (
 ) where
 
 import Auth
+import Hash
 import DB.Config
 import Pool.Local
 import Server
+import Tree
 import Protocol.ClientPool
 import Protocol
 import Harchive.Store.Backup
@@ -17,6 +19,7 @@ import Harchive.Store.Backup
 import Control.Monad (unless, forM_, liftM)
 
 import Data.List (foldl')
+import Data.Maybe (fromJust)
 import System.IO
 import System.Exit
 import System.Console.GetOpt
@@ -147,6 +150,9 @@ serveCommand handle db pool = do
       Right RequestBackupList -> do
 	 listBackups handle pool
 	 serveCommand handle db pool
+      Right (RequestRestore hash) -> do
+	 restoreBackup handle pool hash
+	 serveCommand handle db pool
       Right RequestGoodbye -> do
 	 putStrLn "Client exiting"
 
@@ -163,6 +169,14 @@ listBackups handle pool = do
       sendMessageP BackupListDone
       flushP
    return ()
+
+restoreBackup :: ChunkReader p => Handle -> p -> Hash -> IO ()
+restoreBackup handle pool hash = do
+   -- TODO: Error handling.
+   info <- liftM fromJust $ getBackupInfo pool hash
+   putStrLn $ show info
+   walkTree pool (biHash info) $ \node -> do
+      putStrLn $ show node
 
 -- Perform initial client authentication and hello message.  Returns
 -- either an error, or the path to the storage pool to use.

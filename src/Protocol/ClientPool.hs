@@ -88,19 +88,28 @@ instance Binary InitReply where
 -- these enter a different state for the replies.
 data PoolRequest
    = RequestBackupList
+   | RequestRestore Hash
    | RequestGoodbye
 
 instance Binary PoolRequest where
    put RequestBackupList = putPBInt (4200::Int)
+   put (RequestRestore hash) = do
+      putPBInt (4201::Int)
+      putByteString $ toByteString hash
    put RequestGoodbye = putPBInt (4299::Int)
 
    get = do
       key <- getPBInt :: Get Int
       case key of
 	 4200 -> return RequestBackupList
+	 4201 -> do
+	    hash <- getByteString 20
+	    return $ RequestRestore (byteStringToHash hash)
 	 4299 -> return RequestGoodbye
 	 _ -> error $ "Invalid backup request: " ++ show key
 
+----------------------------------------------------------------------
+-- Response from RequestBackupList
 data BackupListReply
    = BackupListNode Hash String String UTCTime
    | BackupListDone
@@ -130,3 +139,6 @@ instance Binary BackupListReply where
 	    return $ BackupListNode (byteStringToHash hash) host volume date
 	 4399 -> return BackupListDone
 	 _ -> error $ "Invalid backup reply: " ++ show key
+
+----------------------------------------------------------------------
+-- Response from RequestRestore

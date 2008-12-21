@@ -21,6 +21,7 @@ data BackupInfo = BackupInfo {
    biStartTime, biEndTime :: UTCTime,
    biHash :: Hash,
    biInfo :: Attr }
+   deriving (Show)
 
 getBackupInfo :: ChunkReader p => p -> Hash -> IO (Maybe BackupInfo)
 getBackupInfo pool hash = do
