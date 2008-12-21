@@ -4,6 +4,8 @@
 
 module Main (main) where
 
+import Harchive.Store.Backup
+
 import System.Environment (getArgs)
 
 import Chunk
@@ -58,13 +60,26 @@ showBackups :: ChunkReader p => p -> IO ()
 -- List the backups in the storage pool.
 showBackups pool = do
    hashes <- poolGetBackups pool
-   chunks <- mapM (poolReadChunk pool) hashes
+
+   let getInfo hash = do
+	 info <- getBackupInfo pool hash
+	 return $ maybe (Left hash) (\i -> Right (hash, i)) info
+   allChunks <- mapM getInfo hashes
+   let (badHashes, info) = splitEither allChunks
+
+   case badHashes of
+      [] -> return ()
+      _ -> do
+	 putStrLn $ "Warning: Bad hashes"
+
    locally <- liftIO $ getCurrentTimeZone
-   let chunks' = map fromJust chunks
-   let chunkInfo = map decodeBackupInfo chunks'
-   let info = zip hashes chunkInfo
    let sortedInfo = sortBy (comparing $ biEndTime . snd) info
    liftIO $ putStrLn (intercalate "\n" $ map (backupInfo locally) sortedInfo)
+
+   where
+      splitEither = foldr select ([],[])
+      select (Left x)  ~(ls,rs) = (x:ls,rs)
+      select (Right x) ~(ls,rs) = (ls,x:rs)
 
 backupInfo :: TimeZone -> (Hash, BackupInfo) -> String
 -- Nicely print the information about the backups.
@@ -78,29 +93,6 @@ lPad :: Int -> String -> String
 -- Left padded and truncating version of the source string.
 lPad n str = base ++ replicate (n - length base) ' '
    where base = take n str
-
-data BackupInfo = BackupInfo {
-   biHost, biDomain :: String,
-   biBackup :: String,
-   biStartTime, biEndTime :: UTCTime,
-   biHash :: Hash,
-   biInfo :: Attr }
-
-decodeBackupInfo :: Chunk -> BackupInfo
-decodeBackupInfo chunk =
-   let
-      getField :: (SexpType a) => String -> a
-      getField = justField info
-      info = decodeChunk chunk
-   in
-      BackupInfo {
-	 biHost = getField "HOST",
-	 biDomain = getField "DOMAIN",
-	 biBackup = attrName info,
-	 biStartTime = getField "START-TIME",
-	 biEndTime = getField "END-TIME",
-	 biHash = getField "HASH",
-	 biInfo = info }
 
 ----------------------------------------------------------------------
 
