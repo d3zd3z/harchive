@@ -12,6 +12,7 @@ import DB.Config
 import Server
 import Protocol.ClientPool
 import Protocol
+import Progress (boring)
 
 import Data.List (sort, sortBy)
 import Data.Ord (comparing)
@@ -94,14 +95,14 @@ type BackupItem = (String, String, UTCTime, Hash)
 listBackups :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
 listBackups config nick shorten = do
    withServer config nick $ \_db handle -> do
-      status <- runProtocol handle $ do
+      listingE <- boring $ runProtocol handle $ do
 	 sendMessageP $ RequestBackupList
 	 flushP
 	 backups <- getBackupList
-	 liftIO $ showBackupList $ sortBy (comparing timeOf) $ shorten $ sort backups
 	 sendMessageP $ RequestGoodbye
 	 flushP
-      either failure return status
+	 return $ sortBy (comparing timeOf) $ shorten $ sort backups
+      either failure showBackupList listingE
    where
       failure err = do
 	 putStrLn $ "listing failure: " ++ show err

@@ -17,13 +17,16 @@ module Progress (
 
    Tracker(..),
    (+++), Trackerable(..),
-   kb
+   kb,
+
+   boring
 ) where
 
 import Control.Concurrent
+import Control.Exception (finally)
 import Control.Monad (liftM)
 import System.Timeout
-import System.IO (hFlush, stdout)
+import System.IO (hFlush, stdout, hPutStr, hPutStrLn, stderr)
 
 -- import Text.Printf (printf)
 
@@ -117,6 +120,37 @@ progressIO pm action = do
    result <- action
    putMVar cont ()
    return result
+
+----------------------------------------------------------------------
+
+-- Boring can be used to wrap an I/O operation that might take some
+-- time.  If the operation takes enough time that the user might grow
+-- impatient (and kill the program), this will print a brief message,
+-- and then another at the end.  Note that this shouldn't be used if
+-- the operation is going to print anything out.
+
+boring :: (IO a) -> IO a
+boring action = do
+   done <- newEmptyMVar
+   forkIO $ timer done
+   finally action (putMVar done ())
+   where
+      timer done = do
+	 state <- timeout 300000 $ takeMVar done
+	 case state of
+	    Just () -> return ()
+	    Nothing -> do
+	       hPutStr stderr "Working..."
+	       hFlush stderr
+	       dots done
+      dots done = do
+	 state <- timeout 1000000 $ takeMVar done
+	 case state of
+	    Just () -> hPutStrLn stderr "done"
+	    Nothing -> do
+	       hPutStr stderr "."
+	       hFlush stderr
+	       dots done
 
 ----------------------------------------------------------------------
 
