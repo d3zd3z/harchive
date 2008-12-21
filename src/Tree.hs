@@ -6,12 +6,12 @@ module Tree (
    walk, walkLazy,
    walkHashes,
    TreeOp(..),
-   module DecodeSexp
+   module Harchive.Store.Sexp
 ) where
 
 import Chunk
 import Hash
-import DecodeSexp
+import Harchive.Store.Sexp
 import Pool
 
 import qualified Data.ByteString.Lazy as L

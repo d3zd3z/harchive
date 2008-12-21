@@ -9,7 +9,7 @@ import System.Environment (getArgs)
 import qualified Data.ByteString as B
 import qualified Database.HDBC as SQL
 import Database.HDBC.Sqlite3
-import DecodeSexp
+import Harchive.Store.Sexp
 import Codec.Binary.Base64 (decode)
 
 import Auth

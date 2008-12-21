@@ -8,7 +8,7 @@
 -- list, of keyword value pairs where the values are of a few limited
 -- types (string, and numeric).
 
-module DecodeSexp (
+module Harchive.Store.Sexp (
    decodeAttr, decodeChunk,
    decodeMultiAttr, decodeMultiChunk,
    Attr(..),

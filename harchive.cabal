@@ -79,7 +79,7 @@ executable harchive
       HexDump
       Chunk
       Chunk.IO
-      DecodeSexp
+      Harchive.Store.Sexp
       Status
       Progress
       MBox
