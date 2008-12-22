@@ -7,13 +7,17 @@ module Client.Command (
 ) where
 
 import Auth
+import Chunk
 import Hash
 import DB.Config
 import Server
 import Protocol.ClientPool
 import Protocol
 import Progress (boring)
+import Harchive.IO
+-- import Harchive.Store.Sexp
 
+import qualified Data.ByteString.Lazy as L
 import Data.List (sort, sortBy)
 import Data.Ord (comparing)
 import Data.Time
@@ -22,7 +26,10 @@ import Control.Monad
 import System.IO
 import System.Exit
 import System.Console.GetOpt
+import System.FilePath
 import Text.Printf (printf)
+-- import qualified Control.Exception as E
+import System.Directory
 
 clientCommand :: [String] -> IO ()
 clientCommand cmd = do
@@ -36,6 +43,7 @@ clientCommand cmd = do
 	    ["hello", poolName] -> hello (getTopConfig opts) poolName
 	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
+	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
 	    _ -> do
 	       hPutStrLn stderr $ usageText
 	       exitFailure
@@ -62,6 +70,7 @@ topUsage = "Usage: harchive client {options} command args...\n" ++
    "      pool nick uuid host port secret\n" ++
    "      hello nick\n" ++
    "      list {--short} nick\n" ++
+   "      restore nick hash path\n" ++
    "\n" ++
    "Options:\n"
 
@@ -138,6 +147,57 @@ getBackupList = do
 	 rest <- getBackupList
 	 return $ (host, volume, date, hash) : rest
       BackupListDone -> return []
+
+----------------------------------------------------------------------
+-- Restore a backup to the specified path.
+restoreBackup :: String -> String -> String -> String -> IO ()
+restoreBackup config nick hash path = do
+   withServer config nick $ \_db handle -> do
+      runProtocol handle $ do
+	 sendMessageP $ RequestRestore (fromHex hash)
+	 flushP
+	 processRestore path
+	 sendMessageP $ RequestGoodbye
+	 flushP
+      return ()
+
+processRestore :: String -> Protocol ()
+processRestore path = do
+   msg <- receiveMessageP
+   case msg of
+      RestoreEnter name _atts -> do
+	 -- liftIO $ putStrLn $ "mkdir " ++ path </> name
+	 liftIO $ createDirectory $ path </> name
+      RestoreLeave name atts -> do
+	 liftIO $ setDirAtts (path </> name) atts
+      RestoreOpen name atts -> do
+	 handle <- ask
+	 let fullName = path </> name
+	 liftIO $ withBinaryFile fullName WriteMode $ \desc -> do
+	    runProtocol handle $ restoreFile desc
+	    hFlush desc
+	    setFileAtts fullName desc atts
+      RestoreLink name atts -> do
+	 liftIO $ restoreSymLink (path </> name) atts
+      RestoreOther name atts -> do
+	 liftIO $ restoreOther (path </> name) atts
+      RestoreDone -> return ()
+   case msg of
+      RestoreDone -> return ()
+      _ -> processRestore path
+
+restoreFile :: Handle -> Protocol ()
+restoreFile desc = do
+   loop
+   where
+      loop = do
+	 msg <- receiveMessageP
+	 case msg of
+	    FileDataChunk chunk -> do
+	       liftIO $ L.hPut desc $ chunkData chunk
+	       loop
+	    FileDataDone -> do
+	       return ()
 
 ----------------------------------------------------------------------
 

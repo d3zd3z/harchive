@@ -1,5 +1,15 @@
 There is a lot to be put here.  This is a prototype.
 
+Minor:
+
+- The boring meter prints only dots.  When retrieving a large backup
+  list, it would be more useful to print the number of entries we've
+  received so far.
+
+----------------------------------------------------------------------
+-- Everything below here is based on the old code.  Much is likely to
+still apply.
+
 Important tasks:
 
 - Pool recovery.  Be able to recover the index from just the pool

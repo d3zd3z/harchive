@@ -7,9 +7,11 @@ module Pool.Command (
 ) where
 
 import Auth
+import Hash
 import DB.Config
 import Pool.Local
 import Server
+import Tree
 import Protocol.ClientPool
 import Protocol
 import Harchive.Store.Backup
@@ -17,10 +19,13 @@ import Harchive.Store.Backup
 import Control.Monad (unless, forM_, liftM)
 
 import Data.List (foldl')
+import Data.Maybe (fromJust)
 import System.IO
 import System.Exit
 import System.Console.GetOpt
 import Text.Printf (printf)
+
+import System.Posix (installHandler, Handler(..), sigPIPE)
 
 poolCommand :: [String] -> IO ()
 poolCommand cmd = do
@@ -125,6 +130,7 @@ schema = [
 
 startServer :: String -> IO ()
 startServer config = do
+   installHandler sigPIPE Ignore Nothing
    withConfig schema config $ \db -> do
       port <- getJustConfig db "port"
       serverUuid <- getJustConfig db "uuid"
@@ -147,6 +153,9 @@ serveCommand handle db pool = do
       Right RequestBackupList -> do
 	 listBackups handle pool
 	 serveCommand handle db pool
+      Right (RequestRestore hash) -> do
+	 restoreBackup handle pool hash
+	 serveCommand handle db pool
       Right RequestGoodbye -> do
 	 putStrLn "Client exiting"
 
@@ -161,6 +170,41 @@ listBackups handle pool = do
 	       (biHost i) (biBackup i) (biStartTime i))
 	    info
       sendMessageP BackupListDone
+      flushP
+   return ()
+
+restoreBackup :: ChunkReader p => Handle -> p -> Hash -> IO ()
+restoreBackup handle pool hash = do
+   -- TODO: Error handling.
+   info <- liftM fromJust $ getBackupInfo pool hash
+   -- putStrLn $ show info
+   walkTree pool (biHash info) $ \node -> do
+      case node of
+	 TreeEnter path atts -> do
+	    runProtocol handle $ sendMessageP $ RestoreEnter path atts
+	    return ()
+	 TreeLeave path atts -> do
+	    runProtocol handle $ sendMessageP $ RestoreLeave path atts
+	    return ()
+	 TreeReg path atts _ -> do
+	    runProtocol handle $ do
+	       -- liftIO $ putStrLn $ "Reg: " ++ show atts
+	       sendMessageP $ RestoreOpen path atts
+	       liftIO $ forEachChunk pool (justField atts "HASH") $ \chunk -> do
+		  runProtocol handle $ sendMessageP $ FileDataChunk chunk
+		  return ()
+	       sendMessageP $ FileDataDone
+	    return ()
+	 TreeLink path atts -> do
+	    runProtocol handle $ sendMessageP $ RestoreLink path atts
+	    return ()
+	 TreeOther path atts -> do
+	    runProtocol handle $ sendMessageP $ RestoreOther path atts
+	    return ()
+	 _ -> putStrLn $ "TODO: " ++ show node
+   runProtocol handle $ do
+      sendMessageP $ RestoreLeave "." (biInfo info)
+      sendMessageP $ RestoreDone
       flushP
    return ()
 

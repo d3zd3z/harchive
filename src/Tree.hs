@@ -3,8 +3,9 @@
 ----------------------------------------------------------------------
 
 module Tree (
-   walk, walkLazy,
+   walk, walkLazy, walkTree,
    walkHashes,
+   forEachChunk,
    TreeOp(..),
    module Harchive.Store.Sexp
 ) where
@@ -64,6 +65,20 @@ walkHashes pool rootHash act = do
 	       mapM_ regularFile (indirectHashes $ chunkData payload)
 	    k -> error $ "Implement walking for: " ++ k
 
+-- |Call 'act' with each chunk of file data.
+-- TODO: Better error handling.
+forEachChunk :: ChunkReader p => p -> Hash -> (Chunk -> IO ()) -> IO ()
+forEachChunk pool hash act = do
+   loop hash
+   where
+      loop h = do
+	 chunk <- liftM fromJust $ poolReadChunk pool h
+	 case chunkKind chunk of
+	    "blob" -> act chunk
+	    ['i','n','d',n] | n >= '0' && n <= '9' -> do
+	       mapM_ loop (indirectHashes $ chunkData chunk)
+	    k -> error $ "Unknown chunk type in fileadta: " ++ k
+
 -- Let's see what we can do.  Starting with the hash of a directory,
 -- let's recursively walk through it, printing the tree.  It's a
 -- start.
@@ -77,11 +92,28 @@ data TreeOp
    | TreeReg {
       treeOpPath :: String, treeOpAttr :: Attr,
       treeOpKind :: String }
+   deriving (Show)
 
 -- Note the assymetry of the root directory here.  The attributes of a
 -- directory are stored outside of that directory in the parent, so
 -- the root's attributes are stored in the backup record.
 
+-- Walk the tree, calling the operation for each node.  TODO: The code
+-- isn't really complicated enough to warrant forking.
+walkTree :: ChunkReader p => p -> Hash -> (TreeOp -> IO ()) -> IO ()
+walkTree pool hash action = do
+   getNode <- walk pool hash
+   loop getNode
+   where
+      loop getNode = do
+	 item <- getNode
+	 case item of
+	    TreeEOF -> return ()
+	    _ -> do
+	       action item
+	       loop getNode
+
+----------------------------------------------------------------------
 walkLazy :: ChunkReader p => p -> Hash -> IO [TreeOp]
 -- Perform the walk, and return a list which will be evaluated lazily.
 -- The list never contains a TreeEOF, since the end of list is
