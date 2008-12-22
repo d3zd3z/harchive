@@ -179,6 +179,8 @@ processRestore path = do
 	    setFileAtts fullName desc atts
       RestoreLink name atts -> do
 	 liftIO $ restoreSymLink (path </> name) atts
+      RestoreOther name atts -> do
+	 liftIO $ restoreOther (path </> name) atts
       RestoreDone -> return ()
    case msg of
       RestoreDone -> return ()

@@ -3,7 +3,7 @@
 ----------------------------------------------------------------------
 
 module Harchive.IO (
-   setFileAtts, setDirAtts, restoreSymLink
+   setFileAtts, setDirAtts, restoreSymLink, restoreOther
 ) where
 
 import Harchive.Store.Sexp
@@ -23,39 +23,79 @@ setFileAtts :: FilePath -> Handle -> Attr -> IO ()
 setFileAtts name handle atts = do
    fd <- handleToFd handle
    -- putStrLn $ "Atts: " ++ show atts
-   whenMaybe (field atts "UID" :: Maybe Integer) $ \uid ->
-      whenMaybe (field atts "GID" :: Maybe Integer) $ \gid -> do
-	 failable $ setFdOwnerAndGroup fd (fromInteger uid) (fromInteger gid)
-   whenMaybe (field atts "MODE" :: Maybe Integer) $ \mode -> do
-      setFdMode fd (fromInteger mode)
+   setUidGid (setFdOwnerAndGroup fd) atts
+   setMode (setFdMode fd) atts
    closeFd fd
-   whenMaybe (field atts "MTIME" :: Maybe Integer) $ \mtime' -> do
-      let mtime = fromInteger mtime'
-      setFileTimes name mtime mtime
+   setTimes name atts
 
 setDirAtts :: FilePath -> Attr -> IO ()
 setDirAtts name atts = do
-   whenMaybe (field atts "UID" :: Maybe Integer) $ \uid ->
-      whenMaybe (field atts "GID" :: Maybe Integer) $ \gid -> do
-	 failable $ setOwnerAndGroup name (fromInteger uid) (fromInteger gid)
-   whenMaybe (field atts "MODE" :: Maybe Integer) $ \mode -> do
-      setFileMode name (fromInteger mode)
-   whenMaybe (field atts "MTIME" :: Maybe Integer) $ \mtime' -> do
-      let mtime = fromInteger mtime'
-      setFileTimes name mtime mtime
+   setUidGid (setOwnerAndGroup name) atts
+   setMode (setFileMode name) atts
+   setTimes name atts
 
 -- Restore a symlink.  There is some trickery here to getting the
 -- permissions correct.
 restoreSymLink :: FilePath -> Attr -> IO ()
 restoreSymLink name atts = do
    let newMode = maybe 0644 id (field atts "MODE" :: Maybe Integer)
-   oldMode <- setFileCreationMask $ fromInteger newMode
-   (flip E.finally) (setFileCreationMask oldMode) $ do
+   withCreationMask (fromInteger newMode) $ do
       whenMaybe (field atts "LINK") $ \target -> do
 	 createSymbolicLink target name
+   setUidGid (setSymbolicLinkOwnerAndGroup name) atts
+
+-- Restore "other" things, such as device nodes, fifos and the likes.
+restoreOther :: FilePath -> Attr -> IO ()
+restoreOther name atts = do
+   case attrKind atts of
+      "CHR" -> restoreDevice name characterSpecialMode atts
+      "BLK" -> restoreDevice name blockSpecialMode atts
+      "FIFO" -> restoreFifo name atts
+      kind -> putStrLn $ "Skipping \"" ++ kind ++ "\" node: " ++ name
+
+restoreDevice :: FilePath -> FileMode -> Attr -> IO ()
+restoreDevice name kind atts = do
+   whenMaybe (field atts "MODE" :: Maybe Integer) $ \mode ->
+      whenMaybe (field atts "RDEV" :: Maybe Integer) $ \rdev -> do
+	 withCreationMask 0 $ do
+	    failable $ createDevice name
+	       (fromInteger mode `unionFileModes` kind)
+	       (fromInteger rdev)
+   setUidGid (setOwnerAndGroup name) atts
+   setTimes name atts
+
+restoreFifo :: FilePath -> Attr -> IO ()
+restoreFifo name atts = do
+   whenMaybe (field atts "MODE" :: Maybe Integer) $ \mode ->
+      withCreationMask 0 $ do
+	 createNamedPipe name (fromInteger mode)
+   setUidGid (setOwnerAndGroup name) atts
+   setTimes name atts
+
+withCreationMask :: FileMode -> IO () -> IO ()
+withCreationMask mask action = do
+   oldMode <- setFileCreationMask mask
+   E.finally action (setFileCreationMask oldMode)
+
+-- Use the given function to set the name and attributes for the node.
+setUidGid :: (UserID -> GroupID -> IO ()) -> Attr -> IO ()
+setUidGid op atts = do
    whenMaybe (field atts "UID" :: Maybe Integer) $ \uid ->
       whenMaybe (field atts "GID" :: Maybe Integer) $ \gid -> do
-	 failable $ setSymbolicLinkOwnerAndGroup name (fromInteger uid) (fromInteger gid)
+	 failable $ op (fromInteger uid) (fromInteger gid)
+
+-- Use the given function to set the mode attributes of the given
+-- entity.
+setMode :: (FileMode -> IO ()) -> Attr -> IO ()
+setMode op atts = do
+   whenMaybe (field atts "MODE" :: Maybe Integer) $ \mode -> do
+      op (fromInteger mode)
+
+setTimes :: FilePath -> Attr -> IO ()
+setTimes name atts =
+   whenMaybe (field atts "MTIME" :: Maybe Integer) $ \mtime' -> do
+      let mtime = fromInteger mtime'
+      setFileTimes name mtime mtime
 
 whenMaybe :: Maybe a -> (a -> IO ()) -> IO ()
 whenMaybe Nothing _ = return ()
