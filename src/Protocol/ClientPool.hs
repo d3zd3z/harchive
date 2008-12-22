@@ -154,6 +154,7 @@ data RestoreReply
    = RestoreEnter String Attr
    | RestoreLeave String Attr
    | RestoreOpen String Attr
+   | RestoreLink String Attr
    | RestoreDone
 
 instance Binary RestoreReply where
@@ -168,6 +169,10 @@ instance Binary RestoreReply where
       put atts
    put (RestoreOpen path atts) = do
       putPBInt (12::Int)
+      putString path
+      put atts
+   put (RestoreLink path atts) = do
+      putPBInt (13::Int)
       putString path
       put atts
    put RestoreDone = putPBInt (19::Int)
@@ -187,6 +192,10 @@ instance Binary RestoreReply where
 	    path <- getString
 	    atts <- get
 	    return $ RestoreOpen path atts
+	 13 -> do
+	    path <- getString
+	    atts <- get
+	    return $ RestoreLink path atts
 	 19 -> return RestoreDone
 	 _ -> error $ "Invalid restore reply: " ++ show key
 

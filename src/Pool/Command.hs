@@ -195,6 +195,9 @@ restoreBackup handle pool hash = do
 		  return ()
 	       sendMessageP $ FileDataDone
 	    return ()
+	 TreeLink path atts -> do
+	    runProtocol handle $ sendMessageP $ RestoreLink path atts
+	    return ()
 	 _ -> putStrLn $ "TODO: " ++ show node
    runProtocol handle $ do
       sendMessageP $ RestoreLeave "." (biInfo info)

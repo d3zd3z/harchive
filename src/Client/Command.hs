@@ -176,8 +176,9 @@ processRestore path = do
 	 liftIO $ withBinaryFile fullName WriteMode $ \desc -> do
 	    runProtocol handle $ restoreFile desc
 	    hFlush desc
-	    setFilePreCloseAtts desc atts
-	 liftIO $ setFilePostCloseAtts fullName atts
+	    setFileAtts fullName desc atts
+      RestoreLink name atts -> do
+	 liftIO $ restoreSymLink (path </> name) atts
       RestoreDone -> return ()
    case msg of
       RestoreDone -> return ()
