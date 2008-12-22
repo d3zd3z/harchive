@@ -57,5 +57,5 @@ getMapping = do
 	 value <- get
 	 rest <- getMapping
 	 return $ (key, value):rest
-      2 -> return []
+      0 -> return []
       _ -> error $ "Invalid stream byte: " ++ show mark

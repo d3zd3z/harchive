@@ -29,6 +29,7 @@ library
    hs-source-dirs: src
    build-depends:
       base, binary >= 0.2, zlib, parsec,
+      unix >= 2.0,
       bytestring,
       HDBC >= 1.1.3,
       mtl >= 1.0,

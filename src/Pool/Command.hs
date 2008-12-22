@@ -25,6 +25,8 @@ import System.Exit
 import System.Console.GetOpt
 import Text.Printf (printf)
 
+import System.Posix (installHandler, Handler(..), sigPIPE)
+
 poolCommand :: [String] -> IO ()
 poolCommand cmd = do
    let usageText = usageInfo topUsage topOptions
@@ -128,6 +130,7 @@ schema = [
 
 startServer :: String -> IO ()
 startServer config = do
+   installHandler sigPIPE Ignore Nothing
    withConfig schema config $ \db -> do
       port <- getJustConfig db "port"
       serverUuid <- getJustConfig db "uuid"

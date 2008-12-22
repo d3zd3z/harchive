@@ -10,7 +10,7 @@ module Protocol (
    getLineP, putLineP,
    sendMessageP, flushP, receiveMessageP,
 
-   liftIO, throwError, catchError
+   liftIO, throwError, catchError, ask
 ) where
 
 import qualified Data.ByteString.Lazy as L

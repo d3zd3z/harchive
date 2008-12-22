@@ -7,14 +7,17 @@ module Client.Command (
 ) where
 
 import Auth
+import Chunk
 import Hash
 import DB.Config
 import Server
 import Protocol.ClientPool
 import Protocol
 import Progress (boring)
-import Harchive.Store.Sexp
+import Harchive.IO
+-- import Harchive.Store.Sexp
 
+import qualified Data.ByteString.Lazy as L
 import Data.List (sort, sortBy)
 import Data.Ord (comparing)
 import Data.Time
@@ -25,6 +28,8 @@ import System.Exit
 import System.Console.GetOpt
 import System.FilePath
 import Text.Printf (printf)
+-- import qualified Control.Exception as E
+import System.Directory
 
 clientCommand :: [String] -> IO ()
 clientCommand cmd = do
@@ -161,30 +166,34 @@ processRestore path = do
    msg <- receiveMessageP
    case msg of
       RestoreEnter name _atts -> do
-	 liftIO $ putStrLn $ "mkdir " ++ path </> name
-      RestoreLeave name _atts -> do
-	 liftIO $ putStrLn $ "setdirattr " ++ path </> name
+	 -- liftIO $ putStrLn $ "mkdir " ++ path </> name
+	 liftIO $ createDirectory $ path </> name
+      RestoreLeave name atts -> do
+	 liftIO $ setDirAtts (path </> name) atts
       RestoreOpen name atts -> do
-	 restoreFile (path </> name) atts
+	 handle <- ask
+	 let fullName = path </> name
+	 liftIO $ withBinaryFile fullName WriteMode $ \desc -> do
+	    runProtocol handle $ restoreFile desc
+	    hFlush desc
+	    setFilePreCloseAtts desc atts
+	 liftIO $ setFilePostCloseAtts fullName atts
       RestoreDone -> return ()
    case msg of
       RestoreDone -> return ()
       _ -> processRestore path
 
-restoreFile :: String -> Attr -> Protocol ()
-restoreFile path _atts = do
-   liftIO $ putStrLn $ "reg " ++ path
+restoreFile :: Handle -> Protocol ()
+restoreFile desc = do
    loop
    where
       loop = do
 	 msg <- receiveMessageP
 	 case msg of
-	    FileDataChunk _ -> do
-	       liftIO $ putStr "."
-	       liftIO $ hFlush stdout
+	    FileDataChunk chunk -> do
+	       liftIO $ L.hPut desc $ chunkData chunk
 	       loop
 	    FileDataDone -> do
-	       liftIO $ putStrLn ""
 	       return ()
 
 ----------------------------------------------------------------------
