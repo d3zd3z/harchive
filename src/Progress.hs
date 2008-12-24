@@ -23,10 +23,11 @@ module Progress (
 ) where
 
 import Control.Concurrent
+import Control.Concurrent.STM
 import Control.Exception (finally)
-import Control.Monad (liftM)
+import Control.Monad (liftM, unless)
 import System.Timeout
-import System.IO (hFlush, stdout, hPutStr, hPutStrLn, stderr)
+import System.IO (hFlush, stdout, hPutStr, stderr)
 
 -- import Text.Printf (printf)
 
@@ -129,28 +130,41 @@ progressIO pm action = do
 -- and then another at the end.  Note that this shouldn't be used if
 -- the operation is going to print anything out.
 
+data BoringDone = BoringDone | BoringDot
+
 boring :: (IO a) -> IO a
 boring action = do
-   done <- newEmptyMVar
-   forkIO $ timer done
-   finally action (putMVar done ())
+   done <- newTVarIO False
+   forkIO $ timer done "" "Working..." 300000
+   finally action (atomically $ writeTVar done True)
    where
-      timer done = do
-	 state <- timeout 300000 $ takeMVar done
+      timer done doneMsg contMsg pause = do
+	 expire <- myRegisterDelay pause
+	 state <- atomically $ waitTrue done BoringDone `orElse`
+	    waitTrue expire BoringDot
 	 case state of
-	    Just () -> return ()
-	    Nothing -> do
-	       hPutStr stderr "Working..."
+	    BoringDone -> hPutStr stderr doneMsg
+	    BoringDot -> do
+	       hPutStr stderr contMsg
 	       hFlush stderr
-	       dots done
-      dots done = do
-	 state <- timeout 1000000 $ takeMVar done
-	 case state of
-	    Just () -> hPutStrLn stderr "done"
-	    Nothing -> do
-	       hPutStr stderr "."
-	       hFlush stderr
-	       dots done
+	       timer done "done\n" "." 1000000
+
+-- Local version of registerDelay that works even without -threaded.
+myRegisterDelay :: Int -> IO (TVar Bool)
+myRegisterDelay delay = do
+   notify <- newTVarIO False
+   forkIO $ do
+      threadDelay delay
+      atomically $ writeTVar notify True
+   return notify
+
+-- retries until the given TVar is true, and then returns the given
+-- value.
+waitTrue :: TVar Bool -> a -> STM a
+waitTrue tv x = do
+   d <- readTVar tv
+   unless d retry
+   return x
 
 ----------------------------------------------------------------------
 
