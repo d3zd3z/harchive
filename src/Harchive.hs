@@ -167,19 +167,22 @@ checkFiles paths = do
    (bytesTV, bytesMeter) <- makeMeterCounter (`div` 1024) "KBytes, "
    (totalTV, totalMeter) <- makeMeterCounter (`div` 1024) "KB total, "
    chunksTV <- newTVarIO (0::Int)
+   (instMeter, avgMeter, update) <- makeRateCounter (/ 1024) totalTV
 
    let meter = do
 	 mString "  "
 	 bytesMeter
 	 totalMeter
 	 meterCounter id 10 chunksTV
-	 mString " chunks\n"
+	 mString " chunks\n   "
+	 instMeter >> mString " K/sec ("
+	 avgMeter >> mString " avg)\n"
 	 mString "   file: "
 	 p <- lift $ readTVar pathTV
 	 mRightPad 70 $ mString $ reverse $ take 70 $ reverse p
 
    ind <- makeIndicator meter
-   runIndicator ind
+   runIndicatorUpdate update ind
 
    forM_ paths $ \path -> do
       atomically $ do
@@ -201,3 +204,4 @@ checkFiles paths = do
       process 0
       chunkClose cfile
    stopIndicator ind False
+   putStrLn ""

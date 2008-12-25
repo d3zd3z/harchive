@@ -8,9 +8,11 @@ module Meter (
    runMeter, mString, mLeftPad, mRightPad, mAddCommas,
 
    makeCounter, resetCounter, incrCounter, meterCounter,
+   makeRateCounter,
 
    Indicator,
    makeIndicator, runIndicator, stopIndicator, indicatorIO,
+   runIndicatorUpdate,
 
    makeMeterCounter,
 
@@ -26,6 +28,7 @@ import Control.Concurrent.STM
 import Control.Monad.Writer
 
 import System.IO (hFlush, stdout)
+import Text.Printf (printf)
 
 type DString = DList Char
 
@@ -92,6 +95,48 @@ makeMeterCounter op post = do
 	 mString post
    return $ (counter, meter)
 
+-- Construct a meter that measures average rate of another counter.
+-- Returns two meters and the update STM that needs to be given to
+-- runIndicatorUpdate to keep update these meters.  The first meter is
+-- a one-second instantaneous averate rate, and the second is a
+-- decaying average.  This meter tries to detect resets.
+-- The function is used to adjust the meter value for display (such as
+-- dividing by 1024).
+makeRateCounter :: (Double -> Double) -> TVar Integer
+   -> IO (Meter (), Meter (), STM ())
+makeRateCounter op counter = do
+   tmp <- atomically $ readTVar counter
+   lastValue <- newTVarIO $ tmp
+
+   instRate <- newTVarIO (0.0::Double)
+   avgRate <- newTVarIO (-1::Double)
+
+   let
+      update = do
+	 tlast <- readTVar lastValue
+	 cur <- readTVar counter
+	 let theLast = cur `min` tlast
+
+	 let inst = fromInteger (cur - theLast)
+	 writeTVar instRate inst
+
+	 oldAvg <- readTVar avgRate
+	 if oldAvg < 0
+	    then writeTVar avgRate inst
+	    else writeTVar avgRate $ 0.9 * oldAvg + 0.1 * inst
+
+	 writeTVar lastValue cur
+
+      instMeter = do
+	 inst <- lift $ readTVar instRate
+	 mString $ printf "%8.1f" (op inst)
+
+      avgMeter = do
+	 avg <- lift $ readTVar avgRate
+	 mString $ printf "%8.1f" (op avg)
+
+   return (instMeter, avgMeter, update)
+
 ----------------------------------------------------------------------
 -- Automatic display of a progress meter.
 
@@ -117,13 +162,17 @@ makeIndicator meter = do
       iClear = clear,
       iLock = lock }
 
-runIndicator :: Indicator -> IO ()
-runIndicator ind = do
+-- Runs the given indicator in the background.  The STM argument will
+-- be invoked upon each update (close to once a second) and can be
+-- used to update rate parameters and stuff.
+runIndicatorUpdate :: STM () -> Indicator -> IO ()
+runIndicatorUpdate update ind = do
    forkIO $ run
    return ()
    where
       run = do
 	 threadDelay 1000000
+	 atomically update
 	 running <- atomically $ takeTMVar $ iLock ind
 	 if running
 	    then do
@@ -132,6 +181,9 @@ runIndicator ind = do
 	       run
 	    else
 	       atomically $ putTMVar (iLock ind) $ running
+
+runIndicator :: Indicator -> IO ()
+runIndicator = runIndicatorUpdate (return ())
 
 -- Stop the running indicator, clearing the display if indicated by
 -- the boolean clearIt flag.
