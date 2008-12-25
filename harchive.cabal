@@ -40,6 +40,7 @@ library
       containers >= 0.1,
       network >= 2.1,
       stm >= 2.1,
+      dlist >= 0.4,
       time >= 1.1.2, old-locale
    ghc-options: -Wall
    extra-libraries: ssl
@@ -54,10 +55,11 @@ library
       Pool.Memory
       Auth
       Server
+      Meter
    other-modules:
       MBox
       Status
-      Progress
+      Protocol
 
 -- Initial experiementation with ldump compatability.
 executable hcat
@@ -83,7 +85,7 @@ executable harchive
       Chunk.IO
       Harchive.Store.Sexp
       Status
-      Progress
+      Meter
       MBox
       Tree
       Pool
