@@ -147,22 +147,21 @@ startServer config = do
 
 serveCommand :: Handle -> DB -> LocalPool -> IO ()
 serveCommand handle db pool = do
-   req <- runProtocol handle receiveMessageP
+   req <- justProtocol handle receiveMessageP
    case req of
-      Left err -> error $ "Client failure: " ++ show err
-      Right RequestBackupList -> do
+      RequestBackupList -> do
 	 listBackups handle pool
 	 serveCommand handle db pool
-      Right (RequestRestore hash) -> do
+      RequestRestore hash -> do
 	 restoreBackup handle pool hash
 	 serveCommand handle db pool
-      Right RequestGoodbye -> do
+      RequestGoodbye -> do
 	 putStrLn "Client exiting"
 
 listBackups :: ChunkReader p => Handle -> p -> IO ()
 listBackups handle pool = do
    hashes <- poolGetBackups pool
-   runProtocol handle $ do
+   justProtocol handle $ do
       forM_ hashes $ \hash -> do
 	 info <- liftIO $ getBackupInfo pool hash
 	 maybe (return ()) (\i ->
@@ -171,7 +170,6 @@ listBackups handle pool = do
 	    info
       sendMessageP BackupListDone
       flushP
-   return ()
 
 restoreBackup :: ChunkReader p => Handle -> p -> Hash -> IO ()
 restoreBackup handle pool hash = do
@@ -181,32 +179,25 @@ restoreBackup handle pool hash = do
    walkTree pool (biHash info) $ \node -> do
       case node of
 	 TreeEnter path atts -> do
-	    runProtocol handle $ sendMessageP $ RestoreEnter path atts
-	    return ()
+	    justProtocol handle $ sendMessageP $ RestoreEnter path atts
 	 TreeLeave path atts -> do
-	    runProtocol handle $ sendMessageP $ RestoreLeave path atts
-	    return ()
+	    justProtocol handle $ sendMessageP $ RestoreLeave path atts
 	 TreeReg path atts _ -> do
-	    runProtocol handle $ do
+	    justProtocol handle $ do
 	       -- liftIO $ putStrLn $ "Reg: " ++ show atts
 	       sendMessageP $ RestoreOpen path atts
 	       liftIO $ forEachChunk pool (justField atts "HASH") $ \chunk -> do
-		  runProtocol handle $ sendMessageP $ FileDataChunk chunk
-		  return ()
+		  justProtocol handle $ sendMessageP $ FileDataChunk chunk
 	       sendMessageP $ FileDataDone
-	    return ()
 	 TreeLink path atts -> do
-	    runProtocol handle $ sendMessageP $ RestoreLink path atts
-	    return ()
+	    justProtocol handle $ sendMessageP $ RestoreLink path atts
 	 TreeOther path atts -> do
-	    runProtocol handle $ sendMessageP $ RestoreOther path atts
-	    return ()
+	    justProtocol handle $ sendMessageP $ RestoreOther path atts
 	 _ -> putStrLn $ "TODO: " ++ show node
-   runProtocol handle $ do
+   justProtocol handle $ do
       sendMessageP $ RestoreLeave "." (biInfo info)
       sendMessageP $ RestoreDone
       flushP
-   return ()
 
 -- Perform initial client authentication and hello message.  Returns
 -- either an error, or the path to the storage pool to use.

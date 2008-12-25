@@ -104,18 +104,15 @@ type BackupItem = (String, String, UTCTime, Hash)
 listBackups :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
 listBackups config nick shorten = do
    withServer config nick $ \_db handle -> do
-      listingE <- boring $ runProtocol handle $ do
+      listing <- boring $ justProtocol handle $ do
 	 sendMessageP $ RequestBackupList
 	 flushP
 	 backups <- getBackupList
 	 sendMessageP $ RequestGoodbye
 	 flushP
 	 return $ sortBy (comparing timeOf) $ shorten $ sort backups
-      either failure showBackupList listingE
+      showBackupList listing
    where
-      failure err = do
-	 putStrLn $ "listing failure: " ++ show err
-	 error "Failure"
       timeOf (_, _, time, _) = time
 
 -- Given a sorted list of backups, return only the newest backup of
@@ -153,13 +150,12 @@ getBackupList = do
 restoreBackup :: String -> String -> String -> String -> IO ()
 restoreBackup config nick hash path = do
    withServer config nick $ \_db handle -> do
-      runProtocol handle $ do
+      justProtocol handle $ do
 	 sendMessageP $ RequestRestore (fromHex hash)
 	 flushP
 	 processRestore path
 	 sendMessageP $ RequestGoodbye
 	 flushP
-      return ()
 
 processRestore :: String -> Protocol ()
 processRestore path = do

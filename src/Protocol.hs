@@ -5,7 +5,7 @@
 
 module Protocol (
    Protocol(..),
-   runProtocol,
+   runProtocol, justProtocol,
 
    getLineP, putLineP,
    sendMessageP, flushP, receiveMessageP,
@@ -26,6 +26,13 @@ newtype Protocol a = Protocol {
 -- Reverse arguments from normal so application is easier.
 runProtocol :: Handle -> Protocol a -> IO (Either IOError a)
 runProtocol h p = runReaderT (runErrorT $ unProtocol p) h
+
+-- Similar to runProtocol, but propagate the exception to make
+-- handling errors easier.
+justProtocol :: Handle -> Protocol a -> IO a
+justProtocol h p = do
+   result <- runProtocol h p
+   either ioError return result
 
 -- Read a single line from the protocol (with a specified limit).
 getLineP :: Int -> Protocol String
