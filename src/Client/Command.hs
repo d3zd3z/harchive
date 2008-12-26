@@ -13,6 +13,7 @@ import DB.Config
 import Server
 import Protocol.ClientPool
 import Protocol
+import Protocol.Chan (chanClient)
 import Progress (boring)
 import Harchive.IO
 -- import Harchive.Store.Sexp
@@ -41,6 +42,7 @@ clientCommand cmd = do
 	    ["pool", nick, uuid, host, port, secret] ->
 	       addPool (getTopConfig opts) nick uuid host (read port) secret
 	    ["hello", poolName] -> hello (getTopConfig opts) poolName
+	    ["hello2", poolName] -> hello2 (getTopConfig opts) poolName
 	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
 	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
@@ -69,6 +71,7 @@ topUsage = "Usage: harchive client {options} command args...\n" ++
    "      setup     - Create client configuration\n" ++
    "      pool nick uuid host port secret\n" ++
    "      hello nick\n" ++
+   "      hello2 nick\n" ++
    "      list {--short} nick\n" ++
    "      restore nick hash path\n" ++
    "\n" ++
@@ -98,6 +101,12 @@ hello :: String -> String -> IO ()
 hello config nick = do
    withServer config nick $ \_db _handle -> do
       putStrLn $ "Client hello"
+
+hello2 :: String -> String -> IO ()
+hello2 config nick = do
+   withServer2 config nick
+   -- $ \_db _handle -> do
+   -- putStrLn $ "Client hello"
 
 type BackupItem = (String, String, UTCTime, Hash)
 
@@ -194,6 +203,18 @@ restoreFile desc = do
 	       loop
 	    FileDataDone -> do
 	       return ()
+
+----------------------------------------------------------------------
+
+withServer2 :: String -> String -> IO ()
+withServer2 config nick = do
+   withConfig schema config $ \db -> do
+      uuid <- getJustConfig db "uuid"
+      (host, port, secret) <- liftM onlyOne $
+	 query3 db ("select host, port, secret from pools " ++
+	    "where nick = ?") [toSql nick]
+      -- TODO: Verify their identity not the pool.
+      chanClient host port uuid (const $ return $ Just secret)
 
 ----------------------------------------------------------------------
 

@@ -15,6 +15,7 @@ import Tree
 import Protocol.ClientPool
 import Protocol
 import Harchive.Store.Backup
+import Protocol.Chan (chanServer)
 
 import Control.Monad (unless, forM_, liftM)
 
@@ -38,6 +39,7 @@ poolCommand cmd = do
 	    ["client", uuid, secret] ->
 	       clientAdd (getTopConfig opts) uuid secret
 	    ["serve"] -> startServer (getTopConfig opts)
+	    ["serve2"] -> startServer2 (getTopConfig opts)
 	    _ -> do
 	       hPutStrLn stderr $ usageText
       (_,_,errs) -> do
@@ -123,6 +125,20 @@ schema = [
    "create table config (key text unique primary key, value text)",
    "create table pools (nick text unique primary key, path text, uuid text)",
    "create table clients (uuid text unique primary key, secret text)" ]
+
+----------------------------------------------------------------------
+
+startServer2 :: String -> IO ()
+startServer2 config = do
+   withConfig schema config $ \db -> do
+      port <- getJustConfig db "port"
+      serverUuid <- getJustConfig db "uuid"
+      chanServer port serverUuid (lookupSecret db)
+
+lookupSecret :: DB -> UUID -> IO (Maybe UUID)
+lookupSecret db clientUUID =
+   liftM maybeOne $ query1 db "select secret from clients where uuid = ?"
+      [toSql clientUUID]
 
 ----------------------------------------------------------------------
 
