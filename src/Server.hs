@@ -13,6 +13,8 @@ import System.IO
 import Control.Concurrent
 import Control.Exception
 
+import System.Posix (installHandler, Handler(..), sigPIPE)
+
 -- TODO: Make a way for a particular client command to terminate the
 -- server.
 
@@ -20,6 +22,7 @@ import Control.Exception
 -- child handle in a new thread for each connection.
 serve :: Int -> (Handle -> IO ()) -> IO ()
 serve port action = do
+   installHandler sigPIPE Ignore Nothing
    server <- listenOn (PortNumber $ fromIntegral port)
    let
       main = do
