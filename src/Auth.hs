@@ -7,6 +7,7 @@ module Auth (
    genNonce, genUuid,
    authInitiator, authRecipient,
    runAuthIO, authProtocol,
+   hGetLineSafe,
 
    -- For testing.
    AuthState(..)
@@ -48,8 +49,22 @@ runAuthIO _ writer (AuthGood msg) = do
    return True
 runAuthIO reader writer (AuthMore msg next) = do
    maybe (return ()) (outputMessage writer) msg
-   resp <- hGetLine reader  -- TODO: Use a bounded readline.
+   resp <- hGetLineSafe 128 reader
    runAuthIO reader writer (next resp)
+
+-- like hGetLine, but limits the number of bytes retrieved.  Reads a
+-- single character at a time, so shouldn't be used for large
+-- transfers.
+hGetLineSafe :: Int -> Handle -> IO String
+hGetLineSafe n _ | n <= 0   = return []
+hGetLineSafe n h = do
+   ch <- hGetChar h
+   case ch of
+      '\r' -> hGetLineSafe n h
+      '\n' -> return []
+      _ -> do
+	 rest <- hGetLineSafe (n-1) h
+	 return $ ch:rest
 
 authProtocol :: AuthState -> Protocol Bool
 -- Run the authentication given by AuthState in the Protocol monad.
