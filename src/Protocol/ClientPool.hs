@@ -16,8 +16,6 @@ import Chunk
 import Harchive.Store.Sexp
 import Hash
 import Protocol.Packing
-import Protocol.Attr ()
-import Protocol.Chunk ()
 
 import qualified Data.ByteString.Lazy as L
 import Data.Binary
