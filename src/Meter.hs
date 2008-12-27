@@ -123,7 +123,7 @@ makeRateCounter op counter = do
 	 oldAvg <- readTVar avgRate
 	 if oldAvg < 0
 	    then writeTVar avgRate inst
-	    else writeTVar avgRate $ 0.9 * oldAvg + 0.1 * inst
+	    else writeTVar avgRate $ 0.98 * oldAvg + 0.02 * inst
 
 	 writeTVar lastValue cur
 
