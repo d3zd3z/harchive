@@ -17,6 +17,7 @@ import Protocol
 import Harchive.Store.Backup
 import Protocol.Chan (chanServer, MuxDemux)
 import Protocol.Control
+import Protocol.ChannelNumbers
 
 import Control.Monad (unless, forM_, liftM)
 
@@ -146,7 +147,11 @@ lookupSecret db clientUUID =
 setupChannels :: DB -> ThreadId -> MuxDemux -> IO ()
 setupChannels _db rootThread muxd = do
    putStrLn "Setup Channels"
-   setupControlChannel muxd rootThread
+   setupControlChannel muxd $ \message ->
+      case message of
+         ControlHello -> return ()
+         ControlShutdownServer -> killThread rootThread
+         ControlListPools -> return ()
 
 ----------------------------------------------------------------------
 

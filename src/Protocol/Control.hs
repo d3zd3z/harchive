@@ -10,35 +10,36 @@ module Protocol.Control (
 ) where
 
 import Protocol.Chan
+import Protocol.ChannelNumbers
 
 import Control.Concurrent
 import Control.Concurrent.STM
-import Data.Binary
-import Data.Binary.Put
-import Data.Binary.Get
+
+type ControlHandler = ControlMessage -> IO ()
 
 -- Create the initial control channel message, and fork a thread to
--- listen to it's requests.
-setupControlChannel :: MuxDemux -> ThreadId -> IO ()
-setupControlChannel muxd rootThread = do
+-- listen to it's requests.  The requests themselves are processed by
+-- the handler.
+setupControlChannel :: MuxDemux -> ControlHandler -> IO ()
+setupControlChannel muxd handler = do
    (wChan, rChan) <- atomically makePChan
-   atomically $ addDemuxerChannel 1 wChan (chanDemuxer muxd)
-   forkIO $ controlLoop rChan rootThread
+   atomically $ addDemuxerChannel (fromEnum ClientControlChannel)
+      wChan (chanDemuxer muxd)
+   forkIO $ controlLoop rChan handler
    return ()
 
-controlLoop :: PChanRead ControlMessage -> ThreadId -> IO ()
-controlLoop rChan rootThread = do
+controlLoop :: PChanRead ControlMessage -> ControlHandler -> IO ()
+controlLoop rChan handler = do
    message <- atomically $ readPChan rChan
    putStrLn $ "Message received: " ++ show message
-   case message of
-      ControlHello -> return ()
-      ControlShutdownServer -> killThread rootThread
-   controlLoop rChan rootThread
+   handler message
+   controlLoop rChan handler
 
 makeClientControl :: MuxDemux -> IO (PChanWrite ControlMessage)
 makeClientControl muxd = do
    (wChan, rChan) <- atomically makePChan
-   atomically $ addMuxerChannel 1 rChan (chanMuxer muxd)
+   atomically $ addMuxerChannel (fromEnum ClientControlChannel)
+      rChan (chanMuxer muxd)
    return wChan
 
 sendHello :: PChanWrite ControlMessage -> IO ()
@@ -49,16 +50,3 @@ sendHello wChan = do
 sendShutdown :: PChanWrite ControlMessage -> IO ()
 sendShutdown wChan = do
    atomically $ writePChan wChan ControlShutdownServer
-
-data ControlMessage
-   = ControlShutdownServer
-   | ControlHello
-   deriving (Show)
-
-instance Binary ControlMessage where
-   put ControlShutdownServer = putWord8 0
-   put ControlHello = putWord8 1
-   get = getWord8 >>= \tag -> case tag of
-      0 -> return ControlShutdownServer
-      1 -> return ControlHello
-      _ -> fail "Invalid ControlMessage encoding"
