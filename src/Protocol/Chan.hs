@@ -9,7 +9,9 @@ module Protocol.Chan (
 
    chanServer, chanClient,
 
-   emptyMuxerIO
+   ChanMuxer, emptyMuxer, addMuxerChannel,
+   ChanDemuxer, emptyDemuxer, addDemuxerChannel,
+   MuxDemux(..)
 ) where
 
 import Auth
@@ -70,6 +72,12 @@ makePChan = do
 
 ----------------------------------------------------------------------
 
+data MuxDemux = MuxDemux {
+   chanMuxer :: ChanMuxer,
+   chanDemuxer :: ChanDemuxer,
+   muxerThread :: ThreadId,
+   demuxerThread :: ThreadId }
+
 data ChannelMessage = ChannelMessage PackedInt L.ByteString
    deriving ({-! Binary !-})
 
@@ -85,9 +93,6 @@ makeMuxReader :: Binary a => PChanRead a -> MuxReader
 makeMuxReader chan = do
    msg <- readPChan chan
    return $ encode msg
-
-emptyMuxerIO :: IO ChanMuxer
-emptyMuxerIO = newTVarIO (IntMap.empty)
 
 emptyMuxer :: STM ChanMuxer
 emptyMuxer = newTVar (IntMap.empty)
@@ -116,6 +121,9 @@ runMuxer mux han = do
          return $ (index, msg)
 
 ----------------------------------------------------------------------
+
+-- The demuxer is a little more challenging.  Read channels must be
+-- allocated and registered before any messages come in.
 
 type DemuxWriter = L.ByteString -> STM ()
 type ChanDemuxer = TVar (IntMap DemuxWriter)
@@ -157,20 +165,30 @@ runDemuxer mux handle = do
 -- and the expected secret.
 type SecretGetter = UUID -> IO (Maybe String)
 
-chanServer :: Int -> UUID -> SecretGetter -> IO ()
-chanServer port serverUuid getSecret = do
+-- Establish a sever listening on the given port.  For each new
+-- connection, 'setupChannels' will be called with the muxer/demuxer
+-- to allow the user of the server an opportunity to setup the server
+-- channels.
+chanServer :: Int -> UUID -> SecretGetter -> (MuxDemux -> IO ()) -> IO ()
+chanServer port serverUuid getSecret setupChannels = do
    serve port $ \handle -> do
       secret <- idExchange handle serverUuid getSecret "server" "client"
       auth <- authInitiator secret
       valid <- runAuthIO handle handle auth
       putStrLn $ "valid: " ++ show valid
 
-      -- Simple muxer, with simple control channel and message.
-      (cWrite, cRead) <- atomically makePChan
-      mux <- atomically emptyMuxer
-      atomically $ addMuxerChannel 1 cRead mux
-      atomically $ writePChan cWrite $ PackedString "Hello world"
-      runMuxer mux handle
+      muxer <- atomically emptyMuxer
+      demuxer <- atomically emptyDemuxer
+      muxId <- forkIO $ runMuxer muxer handle
+      myId <- myThreadId
+      setupChannels $ MuxDemux {
+         chanMuxer = muxer,
+         chanDemuxer = demuxer,
+         muxerThread = muxId,
+         demuxerThread = myId }
+
+      -- Become the demuxer.
+      runDemuxer demuxer handle
 
 -- Retrieve the secret for this peer.  Generates a fake secret if the
 -- peer is unknown.
@@ -185,7 +203,10 @@ idExchange handle selfUuid getSecret selfName peerName = do
          maybe genNonce return secret
       _ -> fail "Invalid peer response"
 
-chanClient :: String -> Int -> UUID -> SecretGetter -> IO ()
+-- Create a client.  Returns the MuxDemux with no active channels.
+-- Forks two threads, one for muxing and one for demuxing.  Returns
+-- once the communication has been authenticated.
+chanClient :: String -> Int -> UUID -> SecretGetter -> IO MuxDemux
 chanClient host port clientUuid getSecret = do
    client host port $ \handle -> do
       secret <- idExchange handle clientUuid getSecret "client" "server"
@@ -193,18 +214,18 @@ chanClient host port clientUuid getSecret = do
       valid <- runAuthIO handle handle auth
       putStrLn $ "valid: " ++ show valid
 
-      (cWrite, cRead) <- atomically makePChan
-      mux <- atomically emptyDemuxer
-      atomically $ addDemuxerChannel 1 cWrite mux
-      forkIO $ runDemuxer mux handle
+      -- Construct the empty muxer, demuxer, and start the worker
+      -- threads.
+      muxer <- atomically emptyMuxer
+      demuxer <- atomically emptyDemuxer
+      muxId <- forkIO $ runMuxer muxer handle
+      demuxId <- forkIO $ runDemuxer demuxer handle
 
-      -- Wait for control messages and print them.
-      loop cRead
-   where
-      loop chan = do
-         msg <- atomically $ readPChan chan
-         putStrLn $ "Read: " ++ unpackString msg
-         loop chan
+      return $ MuxDemux {
+         chanMuxer = muxer,
+         chanDemuxer = demuxer,
+         muxerThread = muxId,
+         demuxerThread = demuxId }
 
 ----------------------------------------------------------------------
 

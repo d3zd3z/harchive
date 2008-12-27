@@ -91,6 +91,9 @@ executable harchive
       Tree
       Pool
       Pool.Local
+      Protocol.Chan
+      Protocol.Control
+      Protocol.Packing
 
 -- executable: hfile
 -- main-is: FileServer.hs

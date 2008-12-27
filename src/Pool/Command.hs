@@ -15,10 +15,12 @@ import Tree
 import Protocol.ClientPool
 import Protocol
 import Harchive.Store.Backup
-import Protocol.Chan (chanServer)
+import Protocol.Chan (chanServer, MuxDemux)
+import Protocol.Control
 
 import Control.Monad (unless, forM_, liftM)
 
+import Control.Concurrent
 import Data.List (foldl')
 import Data.Maybe (fromJust)
 import System.IO
@@ -130,15 +132,21 @@ schema = [
 
 startServer2 :: String -> IO ()
 startServer2 config = do
+   rootThread <- myThreadId
    withConfig schema config $ \db -> do
       port <- getJustConfig db "port"
       serverUuid <- getJustConfig db "uuid"
-      chanServer port serverUuid (lookupSecret db)
+      chanServer port serverUuid (lookupSecret db) (setupChannels db rootThread)
 
 lookupSecret :: DB -> UUID -> IO (Maybe UUID)
 lookupSecret db clientUUID =
    liftM maybeOne $ query1 db "select secret from clients where uuid = ?"
       [toSql clientUUID]
+
+setupChannels :: DB -> ThreadId -> MuxDemux -> IO ()
+setupChannels _db rootThread muxd = do
+   putStrLn "Setup Channels"
+   setupControlChannel muxd rootThread
 
 ----------------------------------------------------------------------
 

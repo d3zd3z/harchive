@@ -14,6 +14,7 @@ import Server
 import Protocol.ClientPool
 import Protocol
 import Protocol.Chan (chanClient)
+import Protocol.Control
 import Progress (boring)
 import Harchive.IO
 -- import Harchive.Store.Sexp
@@ -31,6 +32,7 @@ import System.FilePath
 import Text.Printf (printf)
 -- import qualified Control.Exception as E
 import System.Directory
+import Control.Concurrent (threadDelay)
 
 clientCommand :: [String] -> IO ()
 clientCommand cmd = do
@@ -214,7 +216,10 @@ withServer2 config nick = do
 	 query3 db ("select host, port, secret from pools " ++
 	    "where nick = ?") [toSql nick]
       -- TODO: Verify their identity not the pool.
-      chanClient host port uuid (const $ return $ Just secret)
+      muxd <- chanClient host port uuid (const $ return $ Just secret)
+      control <- makeClientControl muxd
+      sendShutdown control
+      threadDelay 1000000
 
 ----------------------------------------------------------------------
 
