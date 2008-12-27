@@ -2,7 +2,7 @@
 -- Channel assignments
 ----------------------------------------------------------------------
 
-module Protocol.ChannelNumbers (
+module Protocol.Messages (
    ChannelAssignments(..),
    ControlMessage(..),
    PoolListingMessage, PoolNodeMessage(..)

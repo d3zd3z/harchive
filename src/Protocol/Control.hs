@@ -10,7 +10,7 @@ module Protocol.Control (
 ) where
 
 import Protocol.Chan
-import Protocol.ChannelNumbers
+import Protocol.Messages
 
 import Control.Concurrent
 import Control.Concurrent.STM

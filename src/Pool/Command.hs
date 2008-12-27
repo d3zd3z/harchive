@@ -17,7 +17,7 @@ import Protocol
 import Harchive.Store.Backup
 import Protocol.Chan (chanServer, MuxDemux)
 import Protocol.Control
-import Protocol.ChannelNumbers
+import Protocol.Messages
 
 import Control.Monad (unless, forM_, liftM)
 
