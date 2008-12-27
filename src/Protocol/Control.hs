@@ -22,9 +22,7 @@ type ControlHandler = ControlMessage -> IO ()
 -- the handler.
 setupControlChannel :: MuxDemux -> ControlHandler -> IO ()
 setupControlChannel muxd handler = do
-   (wChan, rChan) <- atomically makePChan
-   atomically $ addDemuxerChannel (fromEnum ClientControlChannel)
-      wChan (chanDemuxer muxd)
+   rChan <- registerReadChannel muxd ClientControlChannel
    forkIO $ controlLoop rChan handler
    return ()
 
@@ -37,10 +35,7 @@ controlLoop rChan handler = do
 
 makeClientControl :: MuxDemux -> IO (PChanWrite ControlMessage)
 makeClientControl muxd = do
-   (wChan, rChan) <- atomically makePChan
-   atomically $ addMuxerChannel (fromEnum ClientControlChannel)
-      rChan (chanMuxer muxd)
-   return wChan
+   registerWriteChannel muxd ClientControlChannel
 
 sendHello :: PChanWrite ControlMessage -> IO ()
 sendHello wChan = do
