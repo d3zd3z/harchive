@@ -13,8 +13,9 @@ import DB.Config
 import Server
 import Protocol.ClientPool
 import Protocol
-import Protocol.Chan (chanClient)
+import Protocol.Chan
 import Protocol.Control
+import Protocol.Messages
 import Progress (boring)
 import Harchive.IO
 -- import Harchive.Store.Sexp
@@ -32,7 +33,8 @@ import System.FilePath
 import Text.Printf (printf)
 -- import qualified Control.Exception as E
 import System.Directory
-import Control.Concurrent (threadDelay)
+-- import Control.Concurrent (threadDelay)
+import Control.Concurrent.STM
 
 clientCommand :: [String] -> IO ()
 clientCommand cmd = do
@@ -218,8 +220,18 @@ withServer2 config nick = do
       -- TODO: Verify their identity not the pool.
       muxd <- chanClient host port uuid (const $ return $ Just secret)
       control <- makeClientControl muxd
-      sendShutdown control
-      threadDelay 1000000
+      poolChan <- registerReadChannel muxd PoolListingChannel
+      atomically $ writePChan control ControlListPools
+      getPools poolChan
+
+getPools :: PChanRead PoolListingMessage -> IO ()
+getPools poolChan = do
+   msg <- atomically $ readPChan poolChan
+   case msg of
+      Nothing -> return ()
+      Just (PoolNodeMessage nick uuid) -> do
+         printf "%-15s %s\n" nick uuid
+         getPools poolChan
 
 ----------------------------------------------------------------------
 

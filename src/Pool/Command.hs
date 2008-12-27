@@ -15,13 +15,14 @@ import Tree
 import Protocol.ClientPool
 import Protocol
 import Harchive.Store.Backup
-import Protocol.Chan (chanServer, MuxDemux)
+import Protocol.Chan
 import Protocol.Control
 import Protocol.Messages
 
 import Control.Monad (unless, forM_, liftM)
 
 import Control.Concurrent
+import Control.Concurrent.STM (atomically)
 import Data.List (foldl')
 import Data.Maybe (fromJust)
 import System.IO
@@ -145,13 +146,21 @@ lookupSecret db clientUUID =
       [toSql clientUUID]
 
 setupChannels :: DB -> ThreadId -> MuxDemux -> IO ()
-setupChannels _db rootThread muxd = do
+setupChannels db rootThread muxd = do
    putStrLn "Setup Channels"
    setupControlChannel muxd $ \message ->
       case message of
          ControlHello -> return ()
          ControlShutdownServer -> killThread rootThread
-         ControlListPools -> return ()
+         ControlListPools -> sendPools db muxd
+
+sendPools :: DB -> MuxDemux -> IO ()
+sendPools db muxd = do
+   wChan <- registerWriteChannel muxd PoolListingChannel
+   rows <- query2 db "select nick, uuid from pools" []
+   forM_ rows $ \(nick, uuid) ->
+      atomically $ writePChan wChan $ Just $ PoolNodeMessage nick uuid
+   atomically $ writePChan wChan Nothing
 
 ----------------------------------------------------------------------
 
