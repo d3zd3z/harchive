@@ -9,6 +9,7 @@ module Harchive.IO (
 import Harchive.Store.Sexp
 
 import qualified Control.Exception as E
+import qualified System.IO.Error as Error
 import System.IO
 import System.Posix
 
@@ -102,4 +103,4 @@ whenMaybe Nothing _ = return ()
 whenMaybe (Just a) op = op a
 
 failable :: IO () -> IO ()
-failable = E.handle (const $ return ())
+failable action = Error.catch action (const $ return ())
