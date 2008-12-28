@@ -9,9 +9,10 @@ module Protocol.Chan (
 
    chanServer, chanClient,
 
-   ChanMuxer, emptyMuxer, addMuxerChannel,
-   ChanDemuxer, emptyDemuxer, addDemuxerChannel,
-   MuxDemux(..)
+   ChanMuxer, emptyMuxer, addMuxerChannel, removeMuxerChannel,
+   ChanDemuxer, emptyDemuxer, addDemuxerChannel, removeDemuxerChannel,
+   MuxDemux(..),
+   killMuxDemux
 ) where
 
 import Auth
@@ -25,6 +26,7 @@ import System.IO
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
+import Control.Monad (unless)
 
 import qualified Data.IntMap as IntMap
 import Data.IntMap (IntMap)
@@ -76,7 +78,15 @@ data MuxDemux = MuxDemux {
    chanMuxer :: ChanMuxer,
    chanDemuxer :: ChanDemuxer,
    muxerThread :: ThreadId,
-   demuxerThread :: ThreadId }
+   demuxerThread :: ThreadId,
+   muxDemuxHandle :: Handle }
+
+-- Kill the threads associated with a muxer/demuxer.
+killMuxDemux :: MuxDemux -> IO ()
+killMuxDemux muxd = do
+   killThread $ muxerThread muxd
+   killThread $ demuxerThread muxd
+   hClose $ muxDemuxHandle muxd
 
 data ChannelMessage = ChannelMessage PackedInt L.ByteString
    deriving ({-! Binary !-})
@@ -85,14 +95,19 @@ data ChannelMessage = ChannelMessage PackedInt L.ByteString
 -- the channel, and encodes the messages over a single handle.
 
 -- (Uses PolymorphicComponents)
-type MuxReader = STM L.ByteString
+data MuxReader = MuxReader {
+  readFromMuxReader :: STM L.ByteString,
+  isEmptyMuxReader :: STM Bool }
 type ChanMuxer = TVar (IntMap MuxReader)
 
 -- Construct a read from a given channel.
 makeMuxReader :: Binary a => PChanRead a -> MuxReader
-makeMuxReader chan = do
-   msg <- readPChan chan
-   return $ encode msg
+makeMuxReader chan =
+   MuxReader {
+      readFromMuxReader = do
+         msg <- readPChan chan
+         return $ encode msg,
+      isEmptyMuxReader = isEmptyTMVar (unRead chan) }
 
 emptyMuxer :: STM ChanMuxer
 emptyMuxer = newTVar (IntMap.empty)
@@ -101,6 +116,25 @@ addMuxerChannel :: Binary a => Int -> PChanRead a -> ChanMuxer -> STM ()
 addMuxerChannel channel rchan mux = do
    old <- readTVar mux
    writeTVar mux $ IntMap.insert (fromIntegral channel) (makeMuxReader rchan) old
+
+-- Remove the muxer channel.  Waits until the message has been
+-- dequeued to be sent.
+-- TODO: It doesn't wait for the message to be sent, just dequeued.
+-- This is not sufficient to wait for all of the channels to be
+-- drained.  Ideally, we would have a way of flushing out the write
+-- channels.
+removeMuxerChannel :: Int -> ChanMuxer -> STM ()
+removeMuxerChannel channel mux = do
+   -- Simple version that doesn't wait (which we can't do yet).
+   old <- readTVar mux
+   let chan = IntMap.lookup channel old
+   -- TODO: This can be expressed better.
+   case chan of
+      Nothing -> return ()
+      Just ch -> do
+         emptyp <- isEmptyMuxReader ch
+         unless emptyp retry
+   writeTVar mux $ IntMap.delete channel old
 
 -- Read messages from all of the appropriate channels taking the
 -- messages and sending them over handle.
@@ -117,7 +151,7 @@ runMuxer mux han = do
    where
       tryRead :: (IntMap.Key, MuxReader) -> STM (IntMap.Key, L.ByteString)
       tryRead (index, reader) = do
-         msg <- reader
+         msg <- readFromMuxReader reader
          return $ (index, msg)
 
 ----------------------------------------------------------------------
@@ -135,6 +169,11 @@ addDemuxerChannel :: Binary a => Int -> PChanWrite a -> ChanDemuxer -> STM ()
 addDemuxerChannel channel wchan mux = do
    old <- readTVar mux
    writeTVar mux $ IntMap.insert (fromIntegral channel) (makeDemuxWriter wchan) old
+
+removeDemuxerChannel :: Int -> ChanDemuxer -> STM ()
+removeDemuxerChannel channel mux = do
+   old <- readTVar mux
+   writeTVar mux $ IntMap.delete channel old
 
 -- Construct a writer from a given channel.
 makeDemuxWriter :: Binary a => PChanWrite a -> DemuxWriter
@@ -185,7 +224,8 @@ chanServer port serverUuid getSecret setupChannels = do
          chanMuxer = muxer,
          chanDemuxer = demuxer,
          muxerThread = muxId,
-         demuxerThread = myId }
+         demuxerThread = myId,
+         muxDemuxHandle = handle }
 
       -- Become the demuxer.
       runDemuxer demuxer handle
@@ -225,7 +265,8 @@ chanClient host port clientUuid getSecret = do
          chanMuxer = muxer,
          chanDemuxer = demuxer,
          muxerThread = muxId,
-         demuxerThread = demuxId }
+         demuxerThread = demuxId,
+         muxDemuxHandle = handle }
 
 ----------------------------------------------------------------------
 

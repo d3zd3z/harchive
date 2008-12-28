@@ -7,7 +7,8 @@ module Protocol.Messages (
    ControlMessage(..),
    PoolListingMessage, PoolNodeMessage(..),
 
-   registerReadChannel, registerWriteChannel
+   registerReadChannel, registerWriteChannel,
+   deregisterReadChannel, deregisterWriteChannel
 ) where
 
 import Auth
@@ -30,12 +31,22 @@ registerReadChannel muxd chan = do
    atomically $ addDemuxerChannel (fromEnum chan) wChan (chanDemuxer muxd)
    return rChan
 
+-- Deregister a read channel.
+deregisterReadChannel :: MuxDemux -> ChannelAssignment -> IO ()
+deregisterReadChannel muxd chan = do
+   atomically $ removeDemuxerChannel (fromEnum chan) (chanDemuxer muxd)
+
 -- Register a channel that we will write to.
 registerWriteChannel :: (Binary a) => MuxDemux -> ChannelAssignment -> IO (PChanWrite a)
 registerWriteChannel muxd chan = do
    (wChan, rChan) <- atomically makePChan
    atomically $ addMuxerChannel (fromEnum chan) rChan (chanMuxer muxd)
    return wChan
+
+-- Deregister a write channel.
+deregisterWriteChannel :: MuxDemux -> ChannelAssignment -> IO ()
+deregisterWriteChannel muxd chan = do
+   atomically $ removeMuxerChannel (fromEnum chan) (chanMuxer muxd)
 
 ----------------------------------------------------------------------
 
@@ -50,17 +61,20 @@ data ChannelAssignment
 data ControlMessage
    = ControlShutdownServer
    | ControlHello
+   | ControlGoodbye
    | ControlListPools
    deriving (Show)
 
 instance Binary ControlMessage where
    put ControlShutdownServer = putWord8 0
    put ControlHello = putWord8 1
-   put ControlListPools = putWord8 2
+   put ControlGoodbye = putWord8 2
+   put ControlListPools = putWord8 3
    get = getWord8 >>= \tag -> case tag of
       0 -> return ControlShutdownServer
       1 -> return ControlHello
-      2 -> return ControlListPools
+      2 -> return ControlGoodbye
+      3 -> return ControlListPools
       _ -> fail "Invalid ControlMessage encoding"
 
 type PoolListingMessage = Maybe PoolNodeMessage

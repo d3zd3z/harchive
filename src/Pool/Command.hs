@@ -153,6 +153,7 @@ setupChannels db rootThread muxd = do
          ControlHello -> return ()
          ControlShutdownServer -> killThread rootThread
          ControlListPools -> sendPools db muxd
+         ControlGoodbye -> killMuxDemux muxd
 
 sendPools :: DB -> MuxDemux -> IO ()
 sendPools db muxd = do
@@ -161,6 +162,7 @@ sendPools db muxd = do
    forM_ rows $ \(nick, uuid) ->
       atomically $ writePChan wChan $ Just $ PoolNodeMessage nick uuid
    atomically $ writePChan wChan Nothing
+   deregisterWriteChannel muxd PoolListingChannel
 
 ----------------------------------------------------------------------
 

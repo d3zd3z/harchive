@@ -33,7 +33,7 @@ import System.FilePath
 import Text.Printf (printf)
 -- import qualified Control.Exception as E
 import System.Directory
--- import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM
 
 clientCommand :: [String] -> IO ()
@@ -223,12 +223,20 @@ withServer2 config nick = do
       poolChan <- registerReadChannel muxd PoolListingChannel
       atomically $ writePChan control ControlListPools
       getPools poolChan
+      deregisterReadChannel muxd PoolListingChannel
+      atomically $ writePChan control ControlGoodbye
+      deregisterWriteChannel muxd ClientControlChannel
+      -- TODO: This can be removed once close is done properly.  This
+      -- relies on an idle system at this point to ensure the message
+      -- really got sent before we close the handle.
+      threadDelay 1000
 
 getPools :: PChanRead PoolListingMessage -> IO ()
 getPools poolChan = do
    msg <- atomically $ readPChan poolChan
    case msg of
-      Nothing -> return ()
+      Nothing -> do
+         printf "Done\n"
       Just (PoolNodeMessage nick uuid) -> do
          printf "%-15s %s\n" nick uuid
          getPools poolChan
