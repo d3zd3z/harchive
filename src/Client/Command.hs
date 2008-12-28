@@ -33,7 +33,6 @@ import System.FilePath
 import Text.Printf (printf)
 -- import qualified Control.Exception as E
 import System.Directory
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM
 
 clientCommand :: [String] -> IO ()
@@ -224,12 +223,19 @@ withServer2 config nick = do
       atomically $ writePChan control ControlListPools
       getPools poolChan
       deregisterReadChannel muxd PoolListingChannel
+
       atomically $ writePChan control ControlGoodbye
       deregisterWriteChannel muxd ClientControlChannel
-      -- TODO: This can be removed once close is done properly.  This
-      -- relies on an idle system at this point to ensure the message
-      -- really got sent before we close the handle.
-      threadDelay 1000
+
+      -- TODO: There is a race with this kill.  The goodbye message
+      -- might be received, and the socket closed before we have a
+      -- chance to kill the receiver thread.  Killing this causes a
+      -- message about a short-read exception in the demuxer thread.
+      -- If we just exit, _often_ all the whole program will have a
+      -- chance to exit before this can be printed, but it isn't
+      -- reliable.  The proper fix is likely to detect the closed
+      -- socket and clean up everything nicely.
+      -- killMuxDemux muxd
 
 getPools :: PChanRead PoolListingMessage -> IO ()
 getPools poolChan = do

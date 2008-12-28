@@ -26,7 +26,7 @@ import System.IO
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
-import Control.Monad (unless)
+import Control.Monad (when, unless)
 
 import qualified Data.IntMap as IntMap
 import Data.IntMap (IntMap)
@@ -55,22 +55,35 @@ import Data.IntMap (IntMap)
 ----------------------------------------------------------------------
 --
 -- Each channel has a read and a write end (similar to a Unix pipe),
--- and they are unidirectional.
+-- and they are unidirectional.  There is a 'flushed' flag that is
+-- cleared by writing, and _not_ cleared by reading.  The read routine
+-- will set flushed in the case after it has finished writing the data
+-- to the network as long as no new data has been enqueued.
 
-newtype PChanWrite a = PChanWrite { unWrite :: TMVar a }
-newtype PChanRead a = PChanRead { unRead :: TMVar a }
+data PChannel a = PChannel {
+   pchanVar :: TMVar a,
+   pchanFlushed :: TVar Bool }
+newtype PChanWrite a = PChanWrite { unWrite :: PChannel a }
+newtype PChanRead a = PChanRead { unRead :: PChannel a }
 type PChanPair a = (PChanWrite a, PChanRead a)
 
 writePChan :: PChanWrite a -> a -> STM ()
-writePChan p = putTMVar (unWrite p)
+writePChan p val = do
+   putTMVar (pchanVar $ unWrite p) val
+   writeTVar (pchanFlushed $ unWrite p) False
 
 readPChan :: PChanRead a -> STM a
-readPChan p = takeTMVar (unRead p)
+readPChan = takeTMVar . pchanVar . unRead
+
+readPChanIsEmpty :: PChanRead a -> STM Bool
+readPChanIsEmpty = isEmptyTMVar . pchanVar . unRead
 
 makePChan :: STM (PChanPair a)
 makePChan = do
-   t <- newEmptyTMVar
-   return $ (PChanWrite t, PChanRead t)
+   var <- newEmptyTMVar
+   flushed <- newTVar True
+   let chan = PChannel var flushed
+   return $ (PChanWrite chan, PChanRead chan)
 
 ----------------------------------------------------------------------
 
@@ -84,8 +97,8 @@ data MuxDemux = MuxDemux {
 -- Kill the threads associated with a muxer/demuxer.
 killMuxDemux :: MuxDemux -> IO ()
 killMuxDemux muxd = do
-   killThread $ muxerThread muxd
    killThread $ demuxerThread muxd
+   killThread $ muxerThread muxd
    hClose $ muxDemuxHandle muxd
 
 data ChannelMessage = ChannelMessage PackedInt L.ByteString
@@ -97,7 +110,8 @@ data ChannelMessage = ChannelMessage PackedInt L.ByteString
 -- (Uses PolymorphicComponents)
 data MuxReader = MuxReader {
   readFromMuxReader :: STM L.ByteString,
-  isEmptyMuxReader :: STM Bool }
+  isEmptyMuxReader :: STM Bool,
+  flushedMuxReader :: TVar Bool }
 type ChanMuxer = TVar (IntMap MuxReader)
 
 -- Construct a read from a given channel.
@@ -107,7 +121,8 @@ makeMuxReader chan =
       readFromMuxReader = do
          msg <- readPChan chan
          return $ encode msg,
-      isEmptyMuxReader = isEmptyTMVar (unRead chan) }
+      isEmptyMuxReader = readPChanIsEmpty chan,
+      flushedMuxReader = pchanFlushed $ unRead chan }
 
 emptyMuxer :: STM ChanMuxer
 emptyMuxer = newTVar (IntMap.empty)
@@ -118,11 +133,8 @@ addMuxerChannel channel rchan mux = do
    writeTVar mux $ IntMap.insert (fromIntegral channel) (makeMuxReader rchan) old
 
 -- Remove the muxer channel.  Waits until the message has been
--- dequeued to be sent.
--- TODO: It doesn't wait for the message to be sent, just dequeued.
--- This is not sufficient to wait for all of the channels to be
--- drained.  Ideally, we would have a way of flushing out the write
--- channels.
+-- dequeued to be sent.  Note that if another thread is still
+-- enqueuing messages, we may retry continually.
 removeMuxerChannel :: Int -> ChanMuxer -> STM ()
 removeMuxerChannel channel mux = do
    -- Simple version that doesn't wait (which we can't do yet).
@@ -133,26 +145,33 @@ removeMuxerChannel channel mux = do
       Nothing -> return ()
       Just ch -> do
          emptyp <- isEmptyMuxReader ch
-         unless emptyp retry
+         flushed <- readTVar $ flushedMuxReader ch
+         unless (emptyp && flushed) retry
    writeTVar mux $ IntMap.delete channel old
 
 -- Read messages from all of the appropriate channels taking the
 -- messages and sending them over handle.
 runMuxer :: ChanMuxer -> Handle -> IO ()
 runMuxer mux han = do
-   (channel, message) <- atomically $ do
+   (channel, message, reader) <- atomically $ do
       mr <- readTVar mux
       foldl orElse retry $ map (tryRead) $ IntMap.toList mr
    let payload = encode $ ChannelMessage (PackedInt $ fromIntegral channel) message
    L.hPut han $ encode (fromIntegral $ L.length payload :: Word32)
    L.hPut han payload
    hFlush han
+
+   -- Mark it as flushed if no interveining message has been enqueued.
+   atomically $ do
+      empty <- isEmptyMuxReader reader
+      when empty $ writeTVar (flushedMuxReader reader) True
+
    runMuxer mux han
    where
-      tryRead :: (IntMap.Key, MuxReader) -> STM (IntMap.Key, L.ByteString)
+      tryRead :: (IntMap.Key, MuxReader) -> STM (IntMap.Key, L.ByteString, MuxReader)
       tryRead (index, reader) = do
          msg <- readFromMuxReader reader
-         return $ (index, msg)
+         return $ (index, msg, reader)
 
 ----------------------------------------------------------------------
 
