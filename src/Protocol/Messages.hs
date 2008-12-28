@@ -8,7 +8,8 @@ module Protocol.Messages (
    PoolListingMessage, PoolNodeMessage(..),
 
    registerReadChannel, registerWriteChannel,
-   deregisterReadChannel, deregisterWriteChannel
+   deregisterReadChannel, deregisterWriteChannel,
+   withReadChannel
 ) where
 
 import Auth
@@ -20,6 +21,7 @@ import Data.Binary
 import Data.Binary.Put
 import Data.Binary.Get
 
+import qualified Control.Exception as E
 import Control.Monad (liftM2)
 
 ----------------------------------------------------------------------
@@ -47,6 +49,13 @@ registerWriteChannel muxd chan = do
 deregisterWriteChannel :: MuxDemux -> ChannelAssignment -> IO ()
 deregisterWriteChannel muxd chan = do
    atomically $ removeMuxerChannel (fromEnum chan) (chanMuxer muxd)
+
+-- Convenience handlers for these.
+withReadChannel :: (Binary a) => MuxDemux -> ChannelAssignment ->
+   (PChanRead a -> IO ()) -> IO ()
+withReadChannel muxd chan action = do
+   c <- registerReadChannel muxd chan
+   E.finally (action c) (deregisterReadChannel muxd chan)
 
 ----------------------------------------------------------------------
 

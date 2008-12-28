@@ -218,11 +218,10 @@ withServer2 config nick = do
 	    "where nick = ?") [toSql nick]
       -- TODO: Verify their identity not the pool.
       muxd <- chanClient host port uuid (const $ return $ Just secret)
+
       control <- makeClientControl muxd
-      poolChan <- registerReadChannel muxd PoolListingChannel
-      atomically $ writePChan control ControlListPools
-      getPools poolChan
-      deregisterReadChannel muxd PoolListingChannel
+
+      getPools muxd control
 
       atomically $ writePChan control ControlGoodbye
       deregisterWriteChannel muxd ClientControlChannel
@@ -237,15 +236,21 @@ withServer2 config nick = do
       -- socket and clean up everything nicely.
       -- killMuxDemux muxd
 
-getPools :: PChanRead PoolListingMessage -> IO ()
-getPools poolChan = do
+getPools :: MuxDemux -> PChanWrite ControlMessage -> IO ()
+getPools muxd control = do
+   withReadChannel muxd PoolListingChannel $ \poolChan -> do
+      atomically $ writePChan control ControlListPools
+      getPoolData poolChan
+
+getPoolData :: PChanRead PoolListingMessage -> IO ()
+getPoolData poolChan = do
    msg <- atomically $ readPChan poolChan
    case msg of
       Nothing -> do
          printf "Done\n"
       Just (PoolNodeMessage nick uuid) -> do
          printf "%-15s %s\n" nick uuid
-         getPools poolChan
+         getPoolData poolChan
 
 ----------------------------------------------------------------------
 
