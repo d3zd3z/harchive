@@ -52,7 +52,7 @@ deregisterWriteChannel muxd chan = do
 
 -- Convenience handlers for these.
 withReadChannel :: (Binary a) => MuxDemux -> ChannelAssignment ->
-   (PChanRead a -> IO ()) -> IO ()
+   (PChanRead a -> IO b) -> IO b
 withReadChannel muxd chan action = do
    c <- registerReadChannel muxd chan
    E.finally (action c) (deregisterReadChannel muxd chan)

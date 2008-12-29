@@ -221,7 +221,14 @@ withServer2 config nick = do
 
       control <- makeClientControl muxd
 
-      getPools muxd control
+      pools <- getPools muxd control
+
+      case lookup nick pools of
+         Nothing -> do
+            hPutStrLn stderr $ "Pool with nick " ++ nick ++
+               " does not exist on server"
+         Just poolUuid -> do
+            putStrLn $ "Using pool uuid: " ++ poolUuid
 
       atomically $ writePChan control ControlGoodbye
       deregisterWriteChannel muxd ClientControlChannel
@@ -236,21 +243,20 @@ withServer2 config nick = do
       -- socket and clean up everything nicely.
       -- killMuxDemux muxd
 
-getPools :: MuxDemux -> PChanWrite ControlMessage -> IO ()
+getPools :: MuxDemux -> PChanWrite ControlMessage -> IO [(String, String)]
 getPools muxd control = do
    withReadChannel muxd PoolListingChannel $ \poolChan -> do
       atomically $ writePChan control ControlListPools
       getPoolData poolChan
 
-getPoolData :: PChanRead PoolListingMessage -> IO ()
+getPoolData :: PChanRead PoolListingMessage -> IO [(String, String)]
 getPoolData poolChan = do
    msg <- atomically $ readPChan poolChan
    case msg of
-      Nothing -> do
-         printf "Done\n"
+      Nothing -> return []
       Just (PoolNodeMessage nick uuid) -> do
-         printf "%-15s %s\n" nick uuid
-         getPoolData poolChan
+         rest <- getPoolData poolChan
+         return $ (nick, uuid) : rest
 
 ----------------------------------------------------------------------
 
