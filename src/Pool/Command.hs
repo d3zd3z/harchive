@@ -155,6 +155,7 @@ setupChannels db rootThread muxd = do
          ControlShutdownServer -> killThread rootThread
          ControlListPools -> sendPools db muxd
          ControlGoodbye -> killMuxDemux muxd
+         ControlOpenPool uuid -> openPool db uuid muxd
 
 sendPools :: DB -> MuxDemux -> IO ()
 sendPools db muxd = do
@@ -164,6 +165,28 @@ sendPools db muxd = do
       atomically $ writePChan wChan $ Just $ PoolNodeMessage nick uuid
    atomically $ writePChan wChan Nothing
    deregisterWriteChannel muxd PoolListingChannel
+
+openPool :: DB -> UUID -> MuxDemux -> IO ()
+openPool db uuid muxd = do
+   path <- liftM onlyOne $ query1 db
+      "select path from pools where uuid = ?"
+      [toSql uuid]
+
+   -- TODO: need cleanup here.
+   rChan <- registerReadChannel muxd PoolCommandChannel
+   _ <- forkIO $ withLocalPool path $ \pool -> runPoolCommand rChan muxd pool
+   return ()
+
+runPoolCommand :: PChanRead PoolCommandMessage -> MuxDemux -> LocalPool -> IO ()
+runPoolCommand rChan muxd pool = do
+   msg <- atomically $ readPChan rChan
+   putStrLn $ "Pool message received: " ++ show msg
+   case msg of
+      PoolCommandListBackups -> do
+         hashes <- poolGetBackups pool
+         withWriteChannel muxd PoolBackupListingChannel $ \listChan ->
+            atomically $ writePChan listChan hashes
+   runPoolCommand rChan muxd pool
 
 ----------------------------------------------------------------------
 

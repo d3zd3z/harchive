@@ -14,11 +14,10 @@ import Server
 import Protocol.ClientPool
 import Protocol
 import Protocol.Chan
-import Protocol.Control
-import Protocol.Messages
 import Progress (boring)
 import Harchive.IO
--- import Harchive.Store.Sexp
+import Pool
+import Pool.Remote
 
 import qualified Data.ByteString.Lazy as L
 import Data.List (sort, sortBy)
@@ -31,9 +30,7 @@ import System.Exit
 import System.Console.GetOpt
 import System.FilePath
 import Text.Printf (printf)
--- import qualified Control.Exception as E
 import System.Directory
-import Control.Concurrent.STM
 
 clientCommand :: [String] -> IO ()
 clientCommand cmd = do
@@ -47,6 +44,7 @@ clientCommand cmd = do
 	    ["hello", poolName] -> hello (getTopConfig opts) poolName
 	    ["hello2", poolName] -> hello2 (getTopConfig opts) poolName
 	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
+	    ["list2", poolName] -> listBackups2 (getTopConfig opts) poolName id
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
 	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
 	    _ -> do
@@ -107,9 +105,8 @@ hello config nick = do
 
 hello2 :: String -> String -> IO ()
 hello2 config nick = do
-   withServer2 config nick
-   -- $ \_db _handle -> do
-   -- putStrLn $ "Client hello"
+   withServer2 config nick $ \_ ->
+      putStrLn $ "Client hello"
 
 type BackupItem = (String, String, UTCTime, Hash)
 
@@ -126,6 +123,12 @@ listBackups config nick shorten = do
       showBackupList listing
    where
       timeOf (_, _, time, _) = time
+
+listBackups2 :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
+listBackups2 config nick _shorten = do
+   withServer2 config nick $ \pool -> do
+      hashes <- poolGetBackups pool
+      putStrLn $ "Hashes: " ++ show hashes
 
 -- Given a sorted list of backups, return only the newest backup of
 -- each host/volume combination.
@@ -209,55 +212,17 @@ restoreFile desc = do
 
 ----------------------------------------------------------------------
 
-withServer2 :: String -> String -> IO ()
-withServer2 config nick = do
+-- TODO: XXX
+withServer2 :: String -> String -> (RemotePool -> IO ()) -> IO ()
+withServer2 config nick action = do
    withConfig schema config $ \db -> do
       uuid <- getJustConfig db "uuid"
       (host, port, secret) <- liftM onlyOne $
 	 query3 db ("select host, port, secret from pools " ++
 	    "where nick = ?") [toSql nick]
       -- TODO: Verify their identity not the pool.
-      muxd <- chanClient (ChanPeer host port uuid
-               (const $ return $ Just secret))
-
-      control <- makeClientControl muxd
-
-      pools <- getPools muxd control
-
-      case lookup nick pools of
-         Nothing -> do
-            hPutStrLn stderr $ "Pool with nick " ++ nick ++
-               " does not exist on server"
-         Just poolUuid -> do
-            putStrLn $ "Using pool uuid: " ++ poolUuid
-
-      atomically $ writePChan control ControlGoodbye
-      deregisterWriteChannel muxd ClientControlChannel
-
-      -- TODO: There is a race with this kill.  The goodbye message
-      -- might be received, and the socket closed before we have a
-      -- chance to kill the receiver thread.  Killing this causes a
-      -- message about a short-read exception in the demuxer thread.
-      -- If we just exit, _often_ all the whole program will have a
-      -- chance to exit before this can be printed, but it isn't
-      -- reliable.  The proper fix is likely to detect the closed
-      -- socket and clean up everything nicely.
-      -- killMuxDemux muxd
-
-getPools :: MuxDemux -> PChanWrite ControlMessage -> IO [(String, String)]
-getPools muxd control = do
-   withReadChannel muxd PoolListingChannel $ \poolChan -> do
-      atomically $ writePChan control ControlListPools
-      getPoolData poolChan
-
-getPoolData :: PChanRead PoolListingMessage -> IO [(String, String)]
-getPoolData poolChan = do
-   msg <- atomically $ readPChan poolChan
-   case msg of
-      Nothing -> return []
-      Just (PoolNodeMessage nick uuid) -> do
-         rest <- getPoolData poolChan
-         return $ (nick, uuid) : rest
+      withRemotePool (ChanPeer host port uuid
+            (const $ return $ Just secret)) nick $ action
 
 ----------------------------------------------------------------------
 

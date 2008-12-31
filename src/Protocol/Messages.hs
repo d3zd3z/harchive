@@ -6,10 +6,13 @@ module Protocol.Messages (
    ChannelAssignment(..),
    ControlMessage(..),
    PoolListingMessage, PoolNodeMessage(..),
+   PoolCommandMessage(..),
 
    registerReadChannel, registerWriteChannel,
    deregisterReadChannel, deregisterWriteChannel,
-   withReadChannel
+   withReadChannel, withWriteChannel,
+
+   pullMaybes
 ) where
 
 import Auth
@@ -57,14 +60,33 @@ withReadChannel muxd chan action = do
    c <- registerReadChannel muxd chan
    E.finally (action c) (deregisterReadChannel muxd chan)
 
+withWriteChannel :: (Binary a) => MuxDemux -> ChannelAssignment ->
+   (PChanWrite a -> IO b) -> IO b
+withWriteChannel muxd chan action = do
+   c <- registerWriteChannel muxd chan
+   E.finally (action c) (deregisterWriteChannel muxd chan)
+
+----------------------------------------------------------------------
+
+-- Read all of the nodes from the channel that are 'Just', stopping
+-- when Nothing is received.
+pullMaybes :: PChanRead (Maybe a) -> IO [a]
+pullMaybes chan =
+   atomically (readPChan chan) >>=
+   (maybe (return []) $ \node -> do
+      rest <- pullMaybes chan
+      return $ node:rest)
+
 ----------------------------------------------------------------------
 
 data ChannelAssignment
    -- Channels from client to pool.
    = ClientControlChannel
+   | PoolCommandChannel
 
    -- Channels from pool to client.
    | PoolListingChannel
+   | PoolBackupListingChannel
    deriving (Show, Eq, Enum)
 
 data ControlMessage
@@ -72,6 +94,7 @@ data ControlMessage
    | ControlHello
    | ControlGoodbye
    | ControlListPools
+   | ControlOpenPool UUID
    deriving (Show)
 
 instance Binary ControlMessage where
@@ -79,11 +102,17 @@ instance Binary ControlMessage where
    put ControlHello = putWord8 1
    put ControlGoodbye = putWord8 2
    put ControlListPools = putWord8 3
+   put (ControlOpenPool uuid) = do
+      putWord8 4
+      putString uuid
    get = getWord8 >>= \tag -> case tag of
       0 -> return ControlShutdownServer
       1 -> return ControlHello
       2 -> return ControlGoodbye
       3 -> return ControlListPools
+      4 -> do
+         uuid <- getString
+         return $ ControlOpenPool uuid
       _ -> fail "Invalid ControlMessage encoding"
 
 type PoolListingMessage = Maybe PoolNodeMessage
@@ -95,3 +124,13 @@ data PoolNodeMessage = PoolNodeMessage {
 instance Binary PoolNodeMessage where
    put (PoolNodeMessage nick uuid) = putString nick >> putString uuid
    get = liftM2 PoolNodeMessage getString getString
+
+data PoolCommandMessage
+   = PoolCommandListBackups
+   deriving (Show)
+
+instance Binary PoolCommandMessage where
+   put PoolCommandListBackups = putWord8 0
+   get = getWord8 >>= \tag -> case tag of
+      0 -> return PoolCommandListBackups
+      _ -> fail "Invalid PoolCommandMessage"
