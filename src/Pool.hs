@@ -13,6 +13,8 @@ module Pool (
 import Hash
 import Chunk
 
+import Control.Concurrent.STM (TMVar, newTMVarIO)
+
 -- |Something that can get information about a store of chunks, but not the
 -- data payload.
 class ChunkQuerier a where
@@ -30,6 +32,14 @@ class ChunkQuerier a where
 -- |Something that can read the payload of the chunks in the store.
 class (ChunkQuerier a) => ChunkReader a where
    poolReadChunk :: a -> Hash -> IO (Maybe Chunk)
+
+   -- Like poolReadChunk, but the read _may_ happen asynchronously.
+   poolAsyncReadChunk :: a -> Hash -> IO (TMVar (Maybe Chunk))
+   poolAsyncReadChunk reader hash = do
+      -- Default is synchronous.
+      result <- poolReadChunk reader hash
+      var <- newTMVarIO result
+      return var
 
 -- |A class that can perform both reading and writing.  I don't
 -- believe this is valid Haskell98, but works without enabling any
