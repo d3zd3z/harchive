@@ -6,16 +6,12 @@ module Client.Command (
    clientCommand
 ) where
 
-import Auth
 import Chunk
 import Hash
 import DB.Config
 import Meter
-import Server
 import Protocol.ClientPool
-import Protocol
 import Protocol.Chan
-import Progress (boring)
 import Harchive.Store.Backup
 import Harchive.IO
 import Pool
@@ -46,13 +42,9 @@ clientCommand cmd = do
 	    ["pool", nick, uuid, host, port, secret] ->
 	       addPool (getTopConfig opts) nick uuid host (read port) secret
 	    ["hello", poolName] -> hello (getTopConfig opts) poolName
-	    ["hello2", poolName] -> hello2 (getTopConfig opts) poolName
 	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
-	    ["list2", poolName] -> listBackups2 (getTopConfig opts) poolName id
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
-	    ["list2", "--short", poolName] -> listBackups2 (getTopConfig opts) poolName latestBackup
 	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
-	    ["restore2", poolName, hash, path] -> restoreBackup2 (getTopConfig opts) poolName hash path
 	    _ -> do
 	       hPutStrLn stderr $ usageText
 	       exitFailure
@@ -78,11 +70,8 @@ topUsage = "Usage: harchive client {options} command args...\n" ++
    "      setup     - Create client configuration\n" ++
    "      pool nick uuid host port secret\n" ++
    "      hello nick\n" ++
-   "      hello2 nick\n" ++
    "      list {--short} nick\n" ++
-   "      list2 {--short} nick\n" ++
    "      restore nick hash path\n" ++
-   "      restore2 nick hash path\n" ++
    "\n" ++
    "Options:\n"
 
@@ -108,33 +97,14 @@ schema = [
 ----------------------------------------------------------------------
 hello :: String -> String -> IO ()
 hello config nick = do
-   withServer config nick $ \_db _handle -> do
-      putStrLn $ "Client hello"
-
-hello2 :: String -> String -> IO ()
-hello2 config nick = do
-   withServer2 config nick $ \_ ->
+   withServer config nick $ \_ ->
       putStrLn $ "Client hello"
 
 type BackupItem = (String, String, UTCTime, Hash)
 
 listBackups :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
 listBackups config nick shorten = do
-   withServer config nick $ \_db handle -> do
-      listing <- boring $ justProtocol handle $ do
-	 sendMessageP $ RequestBackupList
-	 flushP
-	 backups <- getBackupList
-	 sendMessageP $ RequestGoodbye
-	 flushP
-	 return $ sortBy (comparing timeOf) $ shorten $ sort backups
-      showBackupList listing
-   where
-      timeOf (_, _, time, _) = time
-
-listBackups2 :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
-listBackups2 config nick shorten = do
-   withServer2 config nick $ \pool -> do
+   withServer config nick $ \pool -> do
       hashes <- poolGetBackups pool
       -- putStrLn $ "Hashes: " ++ show hashes
       chunkBoxes <- forM hashes $ poolAsyncReadChunk pool
@@ -181,45 +151,33 @@ showBackupList backups = do
 	 (take 20 volume)
 	 (formatTime defaultTimeLocale "%F %H:%M" local)
 
--- Retrieve the list of backups from the server.  The order of the
--- tuple is carefully chosen for sorting purposes, currently: Host,
--- Volume, Date, and finally hash.
-getBackupList :: Protocol [BackupItem]
-getBackupList = do
-   entry <- receiveMessageP
-   case entry of
-      BackupListNode hash host volume date -> do
-	 rest <- getBackupList
-	 return $ (host, volume, date, hash) : rest
-      BackupListDone -> return []
-
 ----------------------------------------------------------------------
 -- Restore a backup to the specified path.
 
-restoreBackup2 :: String -> String -> String -> String -> IO ()
-restoreBackup2 config nick hash path = do
-   withServer2 config nick $ \pool -> do
-      remotePoolRestore pool (fromHex hash) (processRestore2 path)
+restoreBackup :: String -> String -> String -> String -> IO ()
+restoreBackup config nick hash path = do
+   withServer config nick $ \pool -> do
+      remotePoolRestore pool (fromHex hash) (processRestore path)
 
-processRestore2 :: FilePath -> FileDataGetter -> RestoreReply -> IO ()
-processRestore2 path _fdGet (RestoreEnter name _atts) = do
+processRestore :: FilePath -> FileDataGetter -> RestoreReply -> IO ()
+processRestore path _fdGet (RestoreEnter name _atts) = do
    createDirectory $ path </> name
-processRestore2 path _fdGet (RestoreLeave name atts) = do
+processRestore path _fdGet (RestoreLeave name atts) = do
    setDirAtts (path </> name) atts
-processRestore2 path fdGet (RestoreOpen name atts) = do
+processRestore path fdGet (RestoreOpen name atts) = do
    let fullName = path </> name
    withBinaryFile fullName WriteMode $ \desc -> do
-      restoreFile2 desc fdGet
+      restoreFile desc fdGet
       hFlush desc
       setFileAtts fullName desc atts
-processRestore2 path _ (RestoreLink name atts) = do
+processRestore path _ (RestoreLink name atts) = do
    restoreSymLink (path </> name) atts
-processRestore2 path _ (RestoreOther name atts) = do
+processRestore path _ (RestoreOther name atts) = do
    restoreOther (path </> name) atts
-processRestore2 _ _ _ = return ()
+processRestore _ _ _ = return ()
 
-restoreFile2 :: Handle -> FileDataGetter -> IO ()
-restoreFile2 desc getter = do
+restoreFile :: Handle -> FileDataGetter -> IO ()
+restoreFile desc getter = do
    loop
    where
       loop = do
@@ -230,59 +188,11 @@ restoreFile2 desc getter = do
                loop
             FileDataDone -> return ()
 
-restoreBackup :: String -> String -> String -> String -> IO ()
-restoreBackup config nick hash path = do
-   withServer config nick $ \_db handle -> do
-      justProtocol handle $ do
-	 sendMessageP $ RequestRestore (fromHex hash)
-	 flushP
-	 processRestore path
-	 sendMessageP $ RequestGoodbye
-	 flushP
-
-processRestore :: String -> Protocol ()
-processRestore path = do
-   msg <- receiveMessageP
-   case msg of
-      RestoreEnter name _atts -> do
-	 -- liftIO $ putStrLn $ "mkdir " ++ path </> name
-	 liftIO $ createDirectory $ path </> name
-      RestoreLeave name atts -> do
-	 liftIO $ setDirAtts (path </> name) atts
-      RestoreOpen name atts -> do
-	 handle <- ask
-	 let fullName = path </> name
-	 liftIO $ withBinaryFile fullName WriteMode $ \desc -> do
-	    runProtocol handle $ restoreFile desc
-	    hFlush desc
-	    setFileAtts fullName desc atts
-      RestoreLink name atts -> do
-	 liftIO $ restoreSymLink (path </> name) atts
-      RestoreOther name atts -> do
-	 liftIO $ restoreOther (path </> name) atts
-      RestoreDone -> return ()
-   case msg of
-      RestoreDone -> return ()
-      _ -> processRestore path
-
-restoreFile :: Handle -> Protocol ()
-restoreFile desc = do
-   loop
-   where
-      loop = do
-	 msg <- receiveMessageP
-	 case msg of
-	    FileDataChunk chunk -> do
-	       liftIO $ L.hPut desc $ chunkData chunk
-	       loop
-	    FileDataDone -> do
-	       return ()
-
 ----------------------------------------------------------------------
 
 -- TODO: XXX
-withServer2 :: String -> String -> (RemotePool -> IO ()) -> IO ()
-withServer2 config nick action = do
+withServer :: String -> String -> (RemotePool -> IO ()) -> IO ()
+withServer config nick action = do
    withConfig schema config $ \db -> do
       uuid <- getJustConfig db "uuid"
       (host, port, secret) <- liftM onlyOne $
@@ -291,41 +201,3 @@ withServer2 config nick action = do
       -- TODO: Verify their identity not the pool.
       withRemotePool (ChanPeer host port uuid
             (const $ return $ Just secret)) nick $ action
-
-----------------------------------------------------------------------
-
-withServer :: String -> String -> (DB -> Handle -> IO a) -> IO a
-withServer config nick action = do
-   withConfig schema config $ \db -> do
-      uuid <- getJustConfig db "uuid"
-      (host, port, poolUuid, secret) <- liftM onlyOne $
-	 query4 db ("select host, port, uuid, secret from pools " ++
-	    "where nick = ?") [toSql nick]
-      client host port $ \handle -> do
-	 status <- runProtocol handle $ do
-	    idExchange uuid
-	    auth <- liftIO $ authRecipient secret
-	    valid <- authProtocol auth
-	    -- liftIO $ putStrLn $ "Valid: " ++ show valid
-	    unless valid $ fail "Authentication failure"
-	    sendMessageP $ RequestHello poolUuid
-	    flushP
-	    _resp <- receiveMessageP :: Protocol InitReply
-	    return () -- Only one possible message.
-	    -- liftIO $ putStrLn $ "Reply: " ++ show resp
-	 either failure return status
-	 action db handle
-   where
-      failure err = do
-	 putStrLn $ "Client failure: " ++ show err
-	 error "Client aborted"
-
-idExchange :: UUID -> Protocol String
-idExchange clientUuid = do
-   req <- getLineP 80
-   case words req of
-      ["server", serverUuid] -> do
-	 putLineP $ "client " ++ clientUuid
-	 flushP
-	 return serverUuid
-      _ -> fail "Invalid message from server"

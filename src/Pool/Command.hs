@@ -11,16 +11,13 @@ import Chunk
 import Hash
 import DB.Config
 import Pool.Local
-import Server
 import Tree
-import Protocol.ClientPool
-import Protocol
 import Harchive.Store.Backup
 import Protocol.Chan
 import Protocol.Control
 import Protocol.Messages
 
-import Control.Monad (unless, forM_, liftM)
+import Control.Monad (forM_, liftM)
 
 import Control.Concurrent
 import Control.Concurrent.STM (atomically)
@@ -44,7 +41,6 @@ poolCommand cmd = do
 	    ["client", uuid, secret] ->
 	       clientAdd (getTopConfig opts) uuid secret
 	    ["serve"] -> startServer (getTopConfig opts)
-	    ["serve2"] -> startServer2 (getTopConfig opts)
 	    _ -> do
 	       hPutStrLn stderr $ usageText
       (_,_,errs) -> do
@@ -133,8 +129,8 @@ schema = [
 
 ----------------------------------------------------------------------
 
-startServer2 :: String -> IO ()
-startServer2 config = do
+startServer :: String -> IO ()
+startServer config = do
    rootThread <- myThreadId
    withConfig schema config $ \db -> do
       port <- getJustConfig db "port"
@@ -204,58 +200,16 @@ runPoolCommand prs = do
          atomically $ writePChan (prsReadChunks prs) chunk
       PoolCommandRestore hash -> do
          withWriteChannel (prsMuxDemux prs) RestoreChannel $ \restoreChan -> do
-            restoreBackup2 pool restoreChan (prsMuxDemux prs) hash
+            restoreBackup pool restoreChan (prsMuxDemux prs) hash
 
    runPoolCommand prs
 
 ----------------------------------------------------------------------
 
-startServer :: String -> IO ()
-startServer config = do
-   withConfig schema config $ \db -> do
-      port <- getJustConfig db "port"
-      serverUuid <- getJustConfig db "uuid"
-      serve port $ \handle -> do
-
-	 poolPathE <- initialHello handle db serverUuid
-	 poolPath <- either failure return poolPathE
-	 -- putStrLn $ "Pool path: " ++ poolPath
-	 withLocalPool poolPath $ \pool -> serveCommand handle db pool
-   where
-      failure err = do
-	 putStrLn $ "Server error: " ++ show err
-	 error "Client exit"
-
-serveCommand :: Handle -> DB -> LocalPool -> IO ()
-serveCommand handle db pool = do
-   req <- justProtocol handle receiveMessageP
-   case req of
-      RequestBackupList -> do
-	 listBackups handle pool
-	 serveCommand handle db pool
-      RequestRestore hash -> do
-	 restoreBackup handle pool hash
-	 serveCommand handle db pool
-      RequestGoodbye -> do
-	 putStrLn "Client exiting"
-
-listBackups :: ChunkReader p => Handle -> p -> IO ()
-listBackups handle pool = do
-   hashes <- poolGetBackups pool
-   justProtocol handle $ do
-      forM_ hashes $ \hash -> do
-	 info <- liftIO $ getBackupInfo pool hash
-	 maybe (return ()) (\i ->
-	    sendMessageP $ BackupListNode hash
-	       (biHost i) (biBackup i) (biStartTime i))
-	    info
-      sendMessageP BackupListDone
-      flushP
-
 -- TODO: the file data can be a Maybe.
-restoreBackup2 :: (ChunkReader p) => p -> PChanWrite RestoreReply ->
+restoreBackup :: (ChunkReader p) => p -> PChanWrite RestoreReply ->
    MuxDemux -> Hash -> IO ()
-restoreBackup2 pool restoreChan muxd hash = do
+restoreBackup pool restoreChan muxd hash = do
    -- TODO: Error handling.
    info <- liftM fromJust $ getBackupInfo pool hash
    walkTree pool (biHash info) $ \node -> do
@@ -278,73 +232,3 @@ restoreBackup2 pool restoreChan muxd hash = do
          _ -> putStrLn $ "TODO: " ++ show node
    atomically $ writePChan restoreChan $ RestoreLeave "." (biInfo info)
    atomically $ writePChan restoreChan $ RestoreDone
-
-restoreBackup :: ChunkReader p => Handle -> p -> Hash -> IO ()
-restoreBackup handle pool hash = do
-   -- TODO: Error handling.
-   info <- liftM fromJust $ getBackupInfo pool hash
-   -- putStrLn $ show info
-   walkTree pool (biHash info) $ \node -> do
-      case node of
-	 TreeEnter path atts -> do
-	    justProtocol handle $ sendMessageP $ RestoreEnter path atts
-	 TreeLeave path atts -> do
-	    justProtocol handle $ sendMessageP $ RestoreLeave path atts
-	 TreeReg path atts _ -> do
-	    justProtocol handle $ do
-	       -- liftIO $ putStrLn $ "Reg: " ++ show atts
-	       sendMessageP $ RestoreOpen path atts
-	       liftIO $ forEachChunk pool (justField atts "HASH") $ \chunk -> do
-		  justProtocol handle $ sendMessageP $ FileDataChunk chunk
-	       sendMessageP $ FileDataDone
-	 TreeLink path atts -> do
-	    justProtocol handle $ sendMessageP $ RestoreLink path atts
-	 TreeOther path atts -> do
-	    justProtocol handle $ sendMessageP $ RestoreOther path atts
-	 _ -> putStrLn $ "TODO: " ++ show node
-   justProtocol handle $ do
-      sendMessageP $ RestoreLeave "." (biInfo info)
-      sendMessageP $ RestoreDone
-      flushP
-
--- Perform initial client authentication and hello message.  Returns
--- either an error, or the path to the storage pool to use.
-initialHello :: Handle -> DB -> UUID -> IO (Either IOError String)
-initialHello handle db serverUuid = do
-   runProtocol handle $ do
-      secret <- idExchange db serverUuid
-      auth <- liftIO $ authInitiator secret
-      valid <- authProtocol auth
-      unless valid $ fail "Client not authenticated"
-      liftIO $ putStrLn $ "Client authenticated"
-
-      msg <- receiveMessageP :: Protocol InitRequest
-      -- liftIO $ putStrLn $ "Message: " ++ show msg
-      case msg of
-	 RequestHello poolUuid -> do
-	    poolPath <- lookupPool db poolUuid
-	    -- liftIO $ putStrLn $ "poolPath = " ++ poolPath
-	    sendMessageP ReplyHello
-	    flushP
-	    return poolPath
-
-lookupPool :: DB -> UUID -> Protocol String
-lookupPool db uuid = do
-   p <- liftM maybeOne $ liftIO $ query1 db "select path from pools where uuid = ?"
-      [toSql uuid]
-   maybe (fail $ "Unknown pool: " ++ uuid) return p
-
--- Exchange UUID's with the client.
-idExchange :: DB -> UUID -> Protocol String
-idExchange db serverUuid = do
-   putLineP $ "server " ++ serverUuid
-   flushP
-   resp <- getLineP 80
-   case words resp of
-      ["client", clientUuid] -> do
-	 secret <- liftM maybeOne $ liftIO $
-	    query1 db "select secret from clients where uuid = ?"
-	    [toSql clientUuid]
-	 maybe fakeSecret return secret
-      _ -> fail "Invalid client response"
-   where fakeSecret = liftIO genNonce
