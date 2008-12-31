@@ -8,6 +8,7 @@ module Pool.Remote (
 ) where
 
 import Auth
+import Chunk
 import Hash
 import Pool
 import Protocol.Chan
@@ -16,19 +17,25 @@ import Protocol.Messages
 
 import Control.Monad (liftM)
 import Control.Concurrent.STM
+import Control.Concurrent (forkIO)
 import System.IO
 
 data RemotePool = RemotePool {
    rpUuid :: UUID,
    rpMuxd :: MuxDemux,
    rpControl :: PChanWrite ControlMessage,
-   rpPoolCommand :: PChanWrite PoolCommandMessage }
+   rpPoolCommand :: PChanWrite PoolCommandMessage,
+   rpChunkReads :: TChan (TMVar (Maybe Chunk)) }
 
 instance ChunkQuerier RemotePool where
    poolGetBackups = getBackups
    poolChunkKind = undefined
    poolHashPresent = undefined
    poolGetUuid = return . rpUuid
+
+instance ChunkReader RemotePool where
+   poolReadChunk = syncRead
+   poolAsyncReadChunk = asyncRead
 
 -- Open a connection to the peer described by 'peer', and connect to
 -- the pool described by 'nick', and call 'action' on the remote pool.
@@ -45,13 +52,17 @@ withRemotePool peer nick action = do
       Just poolUuid -> do
          putStrLn $ "Using pool uuid: " ++ poolUuid
          withWriteChannel muxd PoolCommandChannel $ \poolCommand -> do
-            atomically $ writePChan control $ ControlOpenPool poolUuid
-            let rp = RemotePool {
-               rpUuid = poolUuid,
-               rpMuxd = muxd,
-               rpControl = control,
-               rpPoolCommand = poolCommand }
-            action rp
+            withReadChannel muxd PoolReadChunkChannel $ \poolChunks -> do
+               readQ <- newTChanIO
+               forkIO $ chunkReader poolChunks readQ
+               atomically $ writePChan control $ ControlOpenPool poolUuid
+               let rp = RemotePool {
+                  rpUuid = poolUuid,
+                  rpMuxd = muxd,
+                  rpControl = control,
+                  rpPoolCommand = poolCommand,
+                  rpChunkReads = readQ }
+               action rp
 
    atomically $ writePChan control ControlGoodbye
    deregisterWriteChannel muxd ClientControlChannel
@@ -78,8 +89,33 @@ pairList (PoolNodeMessage nick uuid) = (nick, uuid)
 
 ----------------------------------------------------------------------
 
+-- Reads of chunks enqueue on the 'reqs' queue.  We pull TMVars off of
+-- this, read the chunk from the remote side, and put the results into
+-- the boxes.
+chunkReader :: PChanRead (Maybe Chunk) -> TChan (TMVar (Maybe Chunk)) -> IO ()
+chunkReader rChan reqs = do
+   req <- atomically $ readTChan reqs
+   chunk <- atomically $ readPChan rChan
+   atomically $ putTMVar req chunk
+   chunkReader rChan reqs
+
+----------------------------------------------------------------------
+
 getBackups :: RemotePool -> IO [Hash]
 getBackups rp = do
    withReadChannel (rpMuxd rp) PoolBackupListingChannel $ \listChan -> do
       atomically $ writePChan (rpPoolCommand rp) $ PoolCommandListBackups
       atomically $ readPChan listChan
+
+syncRead :: RemotePool -> Hash -> IO (Maybe Chunk)
+syncRead rp hash = do
+   v <- asyncRead rp hash
+   atomically $ takeTMVar v
+
+asyncRead :: RemotePool -> Hash -> IO (TMVar (Maybe Chunk))
+asyncRead rp hash = do
+   atomically $ do
+      var <- newEmptyTMVar
+      writeTChan (rpChunkReads rp) var
+      writePChan (rpPoolCommand rp) $ PoolCommandReadChunk hash
+      return $ var

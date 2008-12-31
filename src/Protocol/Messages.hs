@@ -16,6 +16,7 @@ module Protocol.Messages (
 ) where
 
 import Auth
+import Hash
 import Protocol.Chan
 import Protocol.Packing
 
@@ -25,7 +26,7 @@ import Data.Binary.Put
 import Data.Binary.Get
 
 import qualified Control.Exception as E
-import Control.Monad (liftM2)
+import Control.Monad (liftM2, ap)
 
 ----------------------------------------------------------------------
 
@@ -87,6 +88,7 @@ data ChannelAssignment
    -- Channels from pool to client.
    | PoolListingChannel
    | PoolBackupListingChannel
+   | PoolReadChunkChannel
    deriving (Show, Eq, Enum)
 
 data ControlMessage
@@ -127,10 +129,13 @@ instance Binary PoolNodeMessage where
 
 data PoolCommandMessage
    = PoolCommandListBackups
+   | PoolCommandReadChunk Hash
    deriving (Show)
 
 instance Binary PoolCommandMessage where
    put PoolCommandListBackups = putWord8 0
+   put (PoolCommandReadChunk hash) = putWord8 1 >> put hash
    get = getWord8 >>= \tag -> case tag of
       0 -> return PoolCommandListBackups
+      1 -> return PoolCommandReadChunk `ap` get
       _ -> fail "Invalid PoolCommandMessage"

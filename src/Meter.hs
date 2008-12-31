@@ -8,7 +8,7 @@ module Meter (
    runMeter, mString, mLeftPad, mRightPad, mAddCommas,
 
    makeCounter, resetCounter, incrCounter, meterCounter,
-   makeRateCounter,
+   makeRateCounter, makeGoalCounter,
 
    Indicator,
    makeIndicator, runIndicator, stopIndicator, indicatorIO,
@@ -93,6 +93,22 @@ makeMeterCounter op post = do
 	 meterCounter op 12 counter
 	 mString " "
 	 mString post
+   return $ (counter, meter)
+
+-- Construct a meter that will show progress toward a goal,
+-- numerically.
+makeGoalCounter :: Int -> String -> IO (TVar Int, Meter ())
+makeGoalCounter total post = do
+   counter <- newTVarIO 0
+   let totalString = addCommas $ show total
+   let digits = length $ totalString
+   let meter = do
+         mString "("
+         meterCounter id digits counter
+         mString $ "/"
+         mString totalString
+         mString ")"
+         mString post
    return $ (counter, meter)
 
 -- Construct a meter that measures average rate of another counter.

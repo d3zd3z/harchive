@@ -10,6 +10,7 @@ import Auth
 import Chunk
 import Hash
 import DB.Config
+import Meter
 import Server
 import Protocol.ClientPool
 import Protocol
@@ -19,9 +20,11 @@ import Harchive.IO
 import Pool
 import Pool.Remote
 
+import Control.Concurrent.STM
 import qualified Data.ByteString.Lazy as L
 import Data.List (sort, sortBy)
 import Data.Ord (comparing)
+import Data.Maybe (fromJust)
 import Data.Time
 import System.Locale
 import Control.Monad
@@ -128,7 +131,26 @@ listBackups2 :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
 listBackups2 config nick _shorten = do
    withServer2 config nick $ \pool -> do
       hashes <- poolGetBackups pool
-      putStrLn $ "Hashes: " ++ show hashes
+      -- putStrLn $ "Hashes: " ++ show hashes
+      chunkBoxes <- forM hashes $ poolAsyncReadChunk pool
+      withListingMeter (length hashes) $ \counter -> do
+         forM_ chunkBoxes $ \box -> do
+            _chunk <- liftM fromJust $ atomically $ takeTMVar box
+            atomically $ incrementTVar counter
+
+withListingMeter :: Int -> (TVar Int -> IO a) -> IO a
+withListingMeter total action = do
+   (var, counterMeter) <- makeGoalCounter total "... "
+   ind <- makeIndicator $ mString "Working: " >> counterMeter
+   runIndicator ind
+   result <- action var
+   stopIndicator ind True
+   return result
+
+incrementTVar :: TVar Int -> STM ()
+incrementTVar tv = do
+   old <- readTVar tv
+   writeTVar tv (old + 1)
 
 -- Given a sorted list of backups, return only the newest backup of
 -- each host/volume combination.

@@ -7,6 +7,7 @@ module Pool.Command (
 ) where
 
 import Auth
+import Chunk
 import Hash
 import DB.Config
 import Pool.Local
@@ -174,19 +175,35 @@ openPool db uuid muxd = do
 
    -- TODO: need cleanup here.
    rChan <- registerReadChannel muxd PoolCommandChannel
-   _ <- forkIO $ withLocalPool path $ \pool -> runPoolCommand rChan muxd pool
+   readChunkChan <- registerWriteChannel muxd PoolReadChunkChannel
+   _ <- forkIO $ withLocalPool path $ \pool -> runPoolCommand $ PoolRunState {
+      prsPoolCommandChannel = rChan,
+      prsMuxDemux = muxd,
+      prsPool = pool,
+      prsReadChunks = readChunkChan }
    return ()
 
-runPoolCommand :: PChanRead PoolCommandMessage -> MuxDemux -> LocalPool -> IO ()
-runPoolCommand rChan muxd pool = do
-   msg <- atomically $ readPChan rChan
-   putStrLn $ "Pool message received: " ++ show msg
+data PoolRunState = PoolRunState {
+   prsPoolCommandChannel :: PChanRead PoolCommandMessage,
+   prsMuxDemux :: MuxDemux,
+   prsPool :: LocalPool,
+   prsReadChunks :: PChanWrite (Maybe Chunk) }
+
+runPoolCommand :: PoolRunState -> IO ()
+runPoolCommand prs = do
+   msg <- atomically $ readPChan (prsPoolCommandChannel prs)
+   -- putStrLn $ "Pool message received: " ++ show msg
+   let pool = prsPool prs
    case msg of
       PoolCommandListBackups -> do
          hashes <- poolGetBackups pool
-         withWriteChannel muxd PoolBackupListingChannel $ \listChan ->
+         withWriteChannel (prsMuxDemux prs) PoolBackupListingChannel $ \listChan ->
             atomically $ writePChan listChan hashes
-   runPoolCommand rChan muxd pool
+      PoolCommandReadChunk hash -> do
+         chunk <- poolReadChunk pool hash
+         atomically $ writePChan (prsReadChunks prs) chunk
+
+   runPoolCommand prs
 
 ----------------------------------------------------------------------
 
