@@ -6,10 +6,11 @@ module Protocol.Messages (
    ChannelAssignment(..),
    ControlMessage(..),
    PoolListingMessage, PoolNodeMessage(..),
+   PoolCommandMessage(..),
 
    registerReadChannel, registerWriteChannel,
    deregisterReadChannel, deregisterWriteChannel,
-   withReadChannel
+   withReadChannel, withWriteChannel
 ) where
 
 import Auth
@@ -57,11 +58,18 @@ withReadChannel muxd chan action = do
    c <- registerReadChannel muxd chan
    E.finally (action c) (deregisterReadChannel muxd chan)
 
+withWriteChannel :: (Binary a) => MuxDemux -> ChannelAssignment ->
+   (PChanWrite a -> IO b) -> IO b
+withWriteChannel muxd chan action = do
+   c <- registerWriteChannel muxd chan
+   E.finally (action c) (deregisterWriteChannel muxd chan)
+
 ----------------------------------------------------------------------
 
 data ChannelAssignment
    -- Channels from client to pool.
    = ClientControlChannel
+   | PoolCommandChannel
 
    -- Channels from pool to client.
    | PoolListingChannel
@@ -72,6 +80,7 @@ data ControlMessage
    | ControlHello
    | ControlGoodbye
    | ControlListPools
+   | ControlOpenPool UUID ChannelAssignment
    deriving (Show)
 
 instance Binary ControlMessage where
@@ -79,11 +88,19 @@ instance Binary ControlMessage where
    put ControlHello = putWord8 1
    put ControlGoodbye = putWord8 2
    put ControlListPools = putWord8 3
+   put (ControlOpenPool uuid channel) = do
+      putWord8 4
+      putString uuid
+      put $ PackedInt $ fromEnum channel
    get = getWord8 >>= \tag -> case tag of
       0 -> return ControlShutdownServer
       1 -> return ControlHello
       2 -> return ControlGoodbye
       3 -> return ControlListPools
+      4 -> do
+         uuid <- getString
+         pChannel <- get
+         return $ ControlOpenPool uuid (toEnum $ unpackInt pChannel)
       _ -> fail "Invalid ControlMessage encoding"
 
 type PoolListingMessage = Maybe PoolNodeMessage
@@ -95,3 +112,13 @@ data PoolNodeMessage = PoolNodeMessage {
 instance Binary PoolNodeMessage where
    put (PoolNodeMessage nick uuid) = putString nick >> putString uuid
    get = liftM2 PoolNodeMessage getString getString
+
+data PoolCommandMessage
+   = PoolCommandListBackups
+   deriving (Show)
+
+instance Binary PoolCommandMessage where
+   put PoolCommandListBackups = putWord8 0
+   get = getWord8 >>= \tag -> case tag of
+      0 -> return PoolCommandListBackups
+      _ -> fail "Invalid PoolCommandMessage"

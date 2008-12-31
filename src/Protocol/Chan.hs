@@ -7,6 +7,7 @@ module Protocol.Chan (
    makePChan,
    writePChan, readPChan,
 
+   ServerInfo(..), SecretGetter,
    chanServer, chanClient,
 
    ChanMuxer, emptyMuxer, addMuxerChannel, removeMuxerChannel,
@@ -262,13 +263,20 @@ idExchange handle selfUuid getSecret selfName peerName = do
          maybe genNonce return secret
       _ -> fail "Invalid peer response"
 
+data ServerInfo = ServerInfo {
+   siHost :: String,
+   siPort :: Int,
+   siClientUuid :: UUID,
+   siSecretGetter :: SecretGetter }
+
 -- Create a client.  Returns the MuxDemux with no active channels.
 -- Forks two threads, one for muxing and one for demuxing.  Returns
 -- once the communication has been authenticated.
-chanClient :: String -> Int -> UUID -> SecretGetter -> IO MuxDemux
-chanClient host port clientUuid getSecret = do
-   client host port $ \handle -> do
-      secret <- idExchange handle clientUuid getSecret "client" "server"
+chanClient :: ServerInfo -> IO MuxDemux
+chanClient sinfo = do
+   client (siHost sinfo) (siPort sinfo) $ \handle -> do
+      secret <- idExchange handle (siClientUuid sinfo)
+         (siSecretGetter sinfo) "client" "server"
       auth <- authRecipient secret
       valid <- runAuthIO handle handle auth
       putStrLn $ "valid: " ++ show valid

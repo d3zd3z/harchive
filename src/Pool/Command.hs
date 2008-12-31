@@ -154,6 +154,7 @@ setupChannels db rootThread muxd = do
          ControlShutdownServer -> killThread rootThread
          ControlListPools -> sendPools db muxd
          ControlGoodbye -> killMuxDemux muxd
+         ControlOpenPool _ _ -> undefined
 
 sendPools :: DB -> MuxDemux -> IO ()
 sendPools db muxd = do

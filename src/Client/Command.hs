@@ -47,6 +47,7 @@ clientCommand cmd = do
 	    ["hello", poolName] -> hello (getTopConfig opts) poolName
 	    ["hello2", poolName] -> hello2 (getTopConfig opts) poolName
 	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
+	    ["list2", poolName] -> listBackups2 (getTopConfig opts) poolName id
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
 	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
 	    _ -> do
@@ -107,9 +108,15 @@ hello config nick = do
 
 hello2 :: String -> String -> IO ()
 hello2 config nick = do
-   withServer2 config nick
+   withServer2 config nick $ \_info -> do
+      putStrLn $ "Client hello"
    -- $ \_db _handle -> do
    -- putStrLn $ "Client hello"
+
+listBackups2 :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
+listBackups2 config nick shorten = do
+   withServer2 config nick $ \info -> do
+      undefined
 
 type BackupItem = (String, String, UTCTime, Hash)
 
@@ -209,8 +216,15 @@ restoreFile desc = do
 
 ----------------------------------------------------------------------
 
-withServer2 :: String -> String -> IO ()
-withServer2 config nick = do
+data ServerInfo = ServerInfo {
+   siMuxDemux :: MuxDemux,
+   siControl :: PChanWrite ControlMessage,
+   siPoolCommand :: PChanWrite PoolCommandMessage }
+
+type ServerAction = ServerInfo -> IO ()
+
+withServer2 :: String -> String -> ServerAction -> IO ()
+withServer2 config nick action = do
    withConfig schema config $ \db -> do
       uuid <- getJustConfig db "uuid"
       (host, port, secret) <- liftM onlyOne $
@@ -229,6 +243,11 @@ withServer2 config nick = do
                " does not exist on server"
          Just poolUuid -> do
             putStrLn $ "Using pool uuid: " ++ poolUuid
+            withWriteChannel muxd PoolCommandChannel $ \poolCommand -> do
+               action $ ServerInfo {
+                  siMuxDemux = muxd,
+                  siControl = control,
+                  siPoolCommand = poolCommand }
 
       atomically $ writePChan control ControlGoodbye
       deregisterWriteChannel muxd ClientControlChannel
