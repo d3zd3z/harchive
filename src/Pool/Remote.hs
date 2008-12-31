@@ -4,7 +4,8 @@
 
 module Pool.Remote (
    RemotePool,
-   withRemotePool
+   withRemotePool,
+   remotePoolRestore, FileDataGetter
 ) where
 
 import Auth
@@ -119,3 +120,22 @@ asyncRead rp hash = do
       writeTChan (rpChunkReads rp) var
       writePChan (rpPoolCommand rp) $ PoolCommandReadChunk hash
       return $ var
+
+----------------------------------------------------------------------
+-- Push based backup restore.
+
+type FileDataGetter = IO FileDataReply
+type RestoreAction = FileDataGetter -> RestoreReply -> IO ()
+remotePoolRestore :: RemotePool -> Hash -> RestoreAction -> IO ()
+remotePoolRestore rp hash action = do
+   withReadChannel (rpMuxd rp) RestoreChannel $ \restoreChan -> do
+      withReadChannel (rpMuxd rp) FileDataChannel $ \fileDataChan -> do
+         atomically $ writePChan (rpPoolCommand rp) $ PoolCommandRestore hash
+         let getter = atomically $ readPChan fileDataChan
+         let loop = do
+               req <- atomically $ readPChan restoreChan
+               action getter req
+               case req of
+                  RestoreDone -> return ()
+                  _ -> loop
+         loop

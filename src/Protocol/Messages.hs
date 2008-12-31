@@ -7,6 +7,7 @@ module Protocol.Messages (
    ControlMessage(..),
    PoolListingMessage, PoolNodeMessage(..),
    PoolCommandMessage(..),
+   RestoreReply(..), FileDataReply(..),
 
    registerReadChannel, registerWriteChannel,
    deregisterReadChannel, deregisterWriteChannel,
@@ -19,6 +20,10 @@ import Auth
 import Hash
 import Protocol.Chan
 import Protocol.Packing
+
+-- TODO: Move these declarations to here when we get rid of the
+-- Protocol.ClientPool module.
+import Protocol.ClientPool (RestoreReply(..), FileDataReply(..))
 
 import Control.Concurrent.STM
 import Data.Binary
@@ -89,6 +94,8 @@ data ChannelAssignment
    | PoolListingChannel
    | PoolBackupListingChannel
    | PoolReadChunkChannel
+   | RestoreChannel
+   | FileDataChannel
    deriving (Show, Eq, Enum)
 
 data ControlMessage
@@ -130,12 +137,15 @@ instance Binary PoolNodeMessage where
 data PoolCommandMessage
    = PoolCommandListBackups
    | PoolCommandReadChunk Hash
+   | PoolCommandRestore Hash
    deriving (Show)
 
 instance Binary PoolCommandMessage where
    put PoolCommandListBackups = putWord8 0
    put (PoolCommandReadChunk hash) = putWord8 1 >> put hash
+   put (PoolCommandRestore hash) = putWord8 2 >> put hash
    get = getWord8 >>= \tag -> case tag of
       0 -> return PoolCommandListBackups
       1 -> return PoolCommandReadChunk `ap` get
+      2 -> return PoolCommandRestore `ap` get
       _ -> fail "Invalid PoolCommandMessage"

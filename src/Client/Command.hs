@@ -52,6 +52,7 @@ clientCommand cmd = do
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
 	    ["list2", "--short", poolName] -> listBackups2 (getTopConfig opts) poolName latestBackup
 	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
+	    ["restore2", poolName, hash, path] -> restoreBackup2 (getTopConfig opts) poolName hash path
 	    _ -> do
 	       hPutStrLn stderr $ usageText
 	       exitFailure
@@ -79,7 +80,9 @@ topUsage = "Usage: harchive client {options} command args...\n" ++
    "      hello nick\n" ++
    "      hello2 nick\n" ++
    "      list {--short} nick\n" ++
+   "      list2 {--short} nick\n" ++
    "      restore nick hash path\n" ++
+   "      restore2 nick hash path\n" ++
    "\n" ++
    "Options:\n"
 
@@ -192,6 +195,41 @@ getBackupList = do
 
 ----------------------------------------------------------------------
 -- Restore a backup to the specified path.
+
+restoreBackup2 :: String -> String -> String -> String -> IO ()
+restoreBackup2 config nick hash path = do
+   withServer2 config nick $ \pool -> do
+      remotePoolRestore pool (fromHex hash) (processRestore2 path)
+
+processRestore2 :: FilePath -> FileDataGetter -> RestoreReply -> IO ()
+processRestore2 path _fdGet (RestoreEnter name _atts) = do
+   createDirectory $ path </> name
+processRestore2 path _fdGet (RestoreLeave name atts) = do
+   setDirAtts (path </> name) atts
+processRestore2 path fdGet (RestoreOpen name atts) = do
+   let fullName = path </> name
+   withBinaryFile fullName WriteMode $ \desc -> do
+      restoreFile2 desc fdGet
+      hFlush desc
+      setFileAtts fullName desc atts
+processRestore2 path _ (RestoreLink name atts) = do
+   restoreSymLink (path </> name) atts
+processRestore2 path _ (RestoreOther name atts) = do
+   restoreOther (path </> name) atts
+processRestore2 _ _ _ = return ()
+
+restoreFile2 :: Handle -> FileDataGetter -> IO ()
+restoreFile2 desc getter = do
+   loop
+   where
+      loop = do
+         msg <- getter
+         case msg of
+            FileDataChunk chunk -> do
+               L.hPut desc $ chunkData chunk
+               loop
+            FileDataDone -> return ()
+
 restoreBackup :: String -> String -> String -> String -> IO ()
 restoreBackup config nick hash path = do
    withServer config nick $ \_db handle -> do

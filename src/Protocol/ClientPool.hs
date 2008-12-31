@@ -155,6 +155,7 @@ data RestoreReply
    | RestoreLink String Attr
    | RestoreOther String Attr
    | RestoreDone
+   deriving (Show)
 
 instance Binary RestoreReply where
    -- TODO: Factor these.
