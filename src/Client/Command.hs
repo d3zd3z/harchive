@@ -217,7 +217,8 @@ withServer2 config nick = do
 	 query3 db ("select host, port, secret from pools " ++
 	    "where nick = ?") [toSql nick]
       -- TODO: Verify their identity not the pool.
-      muxd <- chanClient host port uuid (const $ return $ Just secret)
+      muxd <- chanClient (ChanPeer host port uuid
+               (const $ return $ Just secret))
 
       control <- makeClientControl muxd
 

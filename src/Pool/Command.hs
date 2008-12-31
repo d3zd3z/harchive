@@ -138,7 +138,8 @@ startServer2 config = do
    withConfig schema config $ \db -> do
       port <- getJustConfig db "port"
       serverUuid <- getJustConfig db "uuid"
-      chanServer port serverUuid (lookupSecret db) (setupChannels db rootThread)
+      chanServer (ChanPeer "any" port serverUuid (lookupSecret db))
+         (setupChannels db rootThread)
 
 lookupSecret :: DB -> UUID -> IO (Maybe UUID)
 lookupSecret db clientUUID =

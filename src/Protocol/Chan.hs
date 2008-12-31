@@ -7,6 +7,7 @@ module Protocol.Chan (
    makePChan,
    writePChan, readPChan,
 
+   ChanPeer(..),
    chanServer, chanClient,
 
    ChanMuxer, emptyMuxer, addMuxerChannel, removeMuxerChannel,
@@ -223,14 +224,27 @@ runDemuxer mux handle = do
 -- and the expected secret.
 type SecretGetter = UUID -> IO (Maybe String)
 
--- Establish a sever listening on the given port.  For each new
--- connection, 'setupChannels' will be called with the muxer/demuxer
--- to allow the user of the server an opportunity to setup the server
--- channels.
-chanServer :: Int -> UUID -> SecretGetter -> (MuxDemux -> IO ()) -> IO ()
-chanServer port serverUuid getSecret setupChannels = do
-   serve port $ \handle -> do
-      secret <- idExchange handle serverUuid getSecret "server" "client"
+-- Information about a peer.  Identifies ourselves, the port and
+-- possibly host of the remote connection, and provides a SecretGetter
+-- to query determine a secret once the peer is known.
+data ChanPeer = ChanPeer {
+   chanPeerHost :: String,
+   chanPeerPort :: Int,
+   chanMyUuid :: UUID,
+   chanGetSecret :: SecretGetter }
+
+-- Establish a server.  Currently 'chanPeerHost' is ignored, but
+-- 'chanPeerPort' determines the port we listen on.  Uses chanMyUuid
+-- and chanGetSecret for authentication, and invokes 'setupChannel' with
+-- a newly create MuxDemux for each successfully authenticated
+-- incoming connection.  This function should establish at least one
+-- channel listening for something, and return in order to start the
+-- demuxer.  Runs forever.
+chanServer :: ChanPeer -> (MuxDemux -> IO ()) -> IO ()
+chanServer peer setupChannels = do
+   serve (chanPeerPort peer) $ \handle -> do
+      secret <- idExchange handle (chanMyUuid peer) (chanGetSecret peer)
+         "server" "client"
       auth <- authInitiator secret
       valid <- runAuthIO handle handle auth
       putStrLn $ "valid: " ++ show valid
@@ -265,10 +279,11 @@ idExchange handle selfUuid getSecret selfName peerName = do
 -- Create a client.  Returns the MuxDemux with no active channels.
 -- Forks two threads, one for muxing and one for demuxing.  Returns
 -- once the communication has been authenticated.
-chanClient :: String -> Int -> UUID -> SecretGetter -> IO MuxDemux
-chanClient host port clientUuid getSecret = do
-   client host port $ \handle -> do
-      secret <- idExchange handle clientUuid getSecret "client" "server"
+chanClient :: ChanPeer -> IO MuxDemux
+chanClient peer = do
+   client (chanPeerHost peer) (chanPeerPort peer) $ \handle -> do
+      secret <- idExchange handle (chanMyUuid peer) (chanGetSecret peer)
+         "client" "server"
       auth <- authRecipient secret
       valid <- runAuthIO handle handle auth
       putStrLn $ "valid: " ++ show valid
