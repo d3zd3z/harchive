@@ -16,6 +16,7 @@ import Protocol.ClientPool
 import Protocol
 import Protocol.Chan
 import Progress (boring)
+import Harchive.Store.Backup
 import Harchive.IO
 import Pool
 import Pool.Remote
@@ -49,6 +50,7 @@ clientCommand cmd = do
 	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
 	    ["list2", poolName] -> listBackups2 (getTopConfig opts) poolName id
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
+	    ["list2", "--short", poolName] -> listBackups2 (getTopConfig opts) poolName latestBackup
 	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
 	    _ -> do
 	       hPutStrLn stderr $ usageText
@@ -128,15 +130,21 @@ listBackups config nick shorten = do
       timeOf (_, _, time, _) = time
 
 listBackups2 :: String -> String -> ([BackupItem] -> [BackupItem]) -> IO ()
-listBackups2 config nick _shorten = do
+listBackups2 config nick shorten = do
    withServer2 config nick $ \pool -> do
       hashes <- poolGetBackups pool
       -- putStrLn $ "Hashes: " ++ show hashes
       chunkBoxes <- forM hashes $ poolAsyncReadChunk pool
-      withListingMeter (length hashes) $ \counter -> do
-         forM_ chunkBoxes $ \box -> do
-            _chunk <- liftM fromJust $ atomically $ takeTMVar box
+      backups <- withListingMeter (length hashes) $ \counter -> do
+         forM chunkBoxes $ \box -> do
+            chunk <- liftM fromJust $ atomically $ takeTMVar box
             atomically $ incrementTVar counter
+            let info = decodeBackupInfo chunk
+            return (biHost info, biBackup info,
+               biStartTime info, chunkHash chunk)
+      showBackupList $ sortBy (comparing timeOf) $ shorten $ sort backups
+   where
+      timeOf (_, _, time, _) = time
 
 withListingMeter :: Int -> (TVar Int -> IO a) -> IO a
 withListingMeter total action = do
