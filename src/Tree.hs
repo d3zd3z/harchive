@@ -143,6 +143,9 @@ doWalk pool opBox base hash = do
    chunk <- liftM fromJust $ poolReadChunk pool hash
    case chunkKind chunk of
       "dir " -> walkDir pool opBox base chunk
+      ['d','i','r',n] | n >= '0' && n <= '9' -> do
+         mapM_ (\h -> doWalk pool opBox base h)
+            (indirectHashes $ chunkData chunk)
       k -> error $ "Implement walking for: " ++ k
 
 walkDir :: ChunkReader p => p -> MVar TreeOp -> FilePath -> Chunk -> IO ()
