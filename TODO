@@ -6,6 +6,15 @@ Minor:
   list, it would be more useful to print the number of entries we've
   received so far.
 
+More significant:
+
+X UTF-8 conversion from the lisp format is broken.  The names are
+  restored with extra data (it looks like the UTF-8 is being
+  interpreted as Latin-1 and re-encoded as UTF-8).  Not quite sure how
+  to handle this, since Linux allows invalid UTF-8 characters in
+  filenames.  If there are invalid characters, they will be turned
+  into \xfffd.
+
 ----------------------------------------------------------------------
 -- Everything below here is based on the old code.  Much is likely to
 still apply.

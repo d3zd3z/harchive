@@ -41,7 +41,8 @@ library
       network >= 2.1,
       stm >= 2.1,
       dlist >= 0.4,
-      time >= 1.1.2, old-locale
+      time >= 1.1.2, old-locale,
+      utf8-string >= 0.3
    ghc-options: -Wall
    extra-libraries: ssl
    exposed-modules:

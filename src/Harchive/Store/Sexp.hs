@@ -30,6 +30,7 @@ import Protocol.Packing
 
 import Control.Monad (forM_, liftM)
 import qualified Codec.Binary.Base64 as Base64
+import qualified Codec.Binary.UTF8.String as U8S
 import qualified Data.ByteString as B
 
 import Data.Maybe (fromJust)
@@ -112,6 +113,10 @@ multiAttrParser = do
    eof
    return a
 
+-- Decode a single attribute.  The Lisp representation is encoding
+-- Posix filenames as if they were the first 256 codepoints of Unicode
+-- in UTF-8.  We need to unwrap the UTF-8 once to get the proper names
+-- out of it.
 oneAttr :: Parser Attr
 oneAttr = do
    spaces >> char '('
@@ -122,7 +127,9 @@ oneAttr = do
       sv <- spaces >> value
       return (sk, sv)
    spaces >> char ')'
-   return $ Attr { attrKind = kind, attrName = name, attrAttrs = attrs }
+   return $ Attr { attrKind = kind,
+      attrName = U8S.decodeString name,
+      attrAttrs = attrs }
 
 decodeAlist :: Int -> L.ByteString -> Either ParseError ([SexpValue], Alist)
 -- Parse a single, simple sexp, and return the first 'n' of the items
