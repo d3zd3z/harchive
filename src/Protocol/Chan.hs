@@ -6,6 +6,7 @@ module Protocol.Chan (
    PChanWrite, PChanRead, PChanPair,
    makePChan,
    writePChan, readPChan,
+   writePChanBarrier,
 
    ChanPeer(..),
    chanServer, chanClient,
@@ -72,6 +73,15 @@ writePChan :: PChanWrite a -> a -> STM ()
 writePChan p val = do
    putTMVar (pchanVar $ unWrite p) val
    writeTVar (pchanFlushed $ unWrite p) False
+
+-- Make sure that the data we've been written has been taken.  This is
+-- less expensive than a full flush, since it doesn't necessarily wait
+-- until the data has been written to the socket, but does ensure
+-- relative ordering between writes to different channels.
+writePChanBarrier :: PChanWrite a -> STM ()
+writePChanBarrier p = do
+   empty <- isEmptyTMVar $ pchanVar $ unWrite p
+   unless empty retry
 
 readPChan :: PChanRead a -> STM a
 readPChan = takeTMVar . pchanVar . unRead

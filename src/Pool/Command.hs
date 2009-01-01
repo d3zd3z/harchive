@@ -200,7 +200,8 @@ runPoolCommand prs = do
          atomically $ writePChan (prsReadChunks prs) chunk
       PoolCommandRestore hash -> do
          withWriteChannel (prsMuxDemux prs) RestoreChannel $ \restoreChan -> do
-            restoreBackup pool restoreChan (prsMuxDemux prs) hash
+            withWriteChannel (prsMuxDemux prs) FileDataChannel $ \fileDataChan -> do
+               restoreBackup pool restoreChan fileDataChan hash
 
    runPoolCommand prs
 
@@ -208,8 +209,8 @@ runPoolCommand prs = do
 
 -- TODO: the file data can be a Maybe.
 restoreBackup :: (ChunkReader p) => p -> PChanWrite RestoreReply ->
-   MuxDemux -> Hash -> IO ()
-restoreBackup pool restoreChan muxd hash = do
+   PChanWrite FileDataReply -> Hash -> IO ()
+restoreBackup pool restoreChan fileDataChan hash = do
    -- TODO: Error handling.
    info <- liftM fromJust $ getBackupInfo pool hash
    walkTree pool (biHash info) $ \node -> do
@@ -221,10 +222,11 @@ restoreBackup pool restoreChan muxd hash = do
             atomically $ writePChan restoreChan $ RestoreLeave path atts
          TreeReg path atts _ -> do
             atomically $ writePChan restoreChan $ RestoreOpen path atts
-            withWriteChannel muxd FileDataChannel $ \fileDataChan -> do
-               forEachChunk pool (justField atts "HASH") $ \chunk -> do
-                  atomically $ writePChan fileDataChan $ FileDataChunk chunk
-               atomically $ writePChan fileDataChan $ FileDataDone
+            atomically $ writePChanBarrier restoreChan
+            forEachChunk pool (justField atts "HASH") $ \chunk -> do
+               atomically $ writePChan fileDataChan $ FileDataChunk chunk
+            atomically $ writePChan fileDataChan $ FileDataDone
+            atomically $ writePChanBarrier fileDataChan
          TreeLink path atts -> do
             atomically $ writePChan restoreChan $ RestoreLink path atts
          TreeOther path atts -> do
