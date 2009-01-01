@@ -128,10 +128,15 @@ withListingMeter total action = do
    stopIndicator ind True
    return result
 
-incrementTVar :: TVar Int -> STM ()
+incrementTVar :: (Num a) => TVar a -> STM ()
 incrementTVar tv = do
    old <- readTVar tv
    writeTVar tv (old + 1)
+
+incrementTVarBy :: (Num a) => TVar a -> a -> STM ()
+incrementTVarBy tv amount = do
+   old <- readTVar tv
+   writeTVar tv (old + amount)
 
 -- Given a sorted list of backups, return only the newest backup of
 -- each host/volume combination.
@@ -154,36 +159,90 @@ showBackupList backups = do
 ----------------------------------------------------------------------
 -- Restore a backup to the specified path.
 
+data RestoreMeter = RestoreMeter {
+   rmFileCount :: TVar Integer,
+   rmTotalSize :: TVar Integer,
+   rmPath :: TVar String,
+   rmOldPaths :: TVar [String] }
+
+pushPath :: RestoreMeter -> FilePath -> STM ()
+pushPath (RestoreMeter { rmPath = path, rmOldPaths = oldPath }) newPath = do
+   ps <- readTVar oldPath
+   p <- readTVar path
+   writeTVar path newPath
+   writeTVar oldPath $ p:ps
+
+popPath :: RestoreMeter -> STM ()
+popPath (RestoreMeter { rmPath = path, rmOldPaths = oldPath }) = do
+   (p:ps) <- readTVar oldPath
+   writeTVar oldPath ps
+   writeTVar path p
+
+withRestoreMeter :: (RestoreMeter -> IO a) -> IO a
+withRestoreMeter action = do
+   pathTV <- newTVarIO "???"
+   oldPathsTV <- newTVarIO $ repeat "."
+   (totalTV, totalMeter) <- makeMeterCounter (`div` 1024) "KBytes "
+   (instMeter, avgMeter, update) <- makeRateCounter (/ 1024) totalTV
+   (countTV, countMeter) <- makeMeterCounter id "files "
+   let meter = do
+         mString "  "
+         countMeter
+         totalMeter
+         mString " "
+         instMeter >> mString " K/sec ("
+         avgMeter >> mString " avg)\n"
+         mString "   path: "
+         p <- lift $ readTVar pathTV
+         mString $ take 70 $ p ++ repeat ' '
+   ind <- makeIndicator meter
+   runIndicatorUpdate update ind
+   result <- action $ RestoreMeter {
+      rmFileCount = countTV,
+      rmTotalSize = totalTV,
+      rmPath = pathTV,
+      rmOldPaths = oldPathsTV }
+   stopIndicator ind False
+   putStrLn ""
+   return result
+
 restoreBackup :: String -> String -> String -> String -> IO ()
 restoreBackup config nick hash path = do
    withServer config nick $ \pool -> do
-      remotePoolRestore pool (fromHex hash) (processRestore path)
+      withRestoreMeter $ \meter -> do
+         remotePoolRestore pool (fromHex hash) (processRestore meter path)
 
-processRestore :: FilePath -> FileDataGetter -> RestoreReply -> IO ()
-processRestore path _fdGet (RestoreEnter name _atts) = do
-   createDirectory $ path </> name
-processRestore path _fdGet (RestoreLeave name atts) = do
-   setDirAtts (path </> name) atts
-processRestore path fdGet (RestoreOpen name atts) = do
+processRestore :: RestoreMeter -> FilePath -> FileDataGetter -> RestoreReply -> IO ()
+processRestore rm path _fdGet (RestoreEnter name _atts) = do
    let fullName = path </> name
+   atomically $ pushPath rm fullName
+   createDirectory $ fullName
+processRestore rm path _fdGet (RestoreLeave name atts) = do
+   atomically $ popPath rm
+   setDirAtts (path </> name) atts
+processRestore rm path fdGet (RestoreOpen name atts) = do
+   let fullName = path </> name
+   atomically $ incrementTVar (rmFileCount rm)
    withBinaryFile fullName WriteMode $ \desc -> do
-      restoreFile desc fdGet
+      restoreFile rm desc fdGet
       hFlush desc
       setFileAtts fullName desc atts
-processRestore path _ (RestoreLink name atts) = do
+processRestore _rm path _ (RestoreLink name atts) = do
    restoreSymLink (path </> name) atts
-processRestore path _ (RestoreOther name atts) = do
+processRestore _rm path _ (RestoreOther name atts) = do
    restoreOther (path </> name) atts
-processRestore _ _ _ = return ()
+processRestore _ _ _ _ = return ()
 
-restoreFile :: Handle -> FileDataGetter -> IO ()
-restoreFile desc getter = do
+restoreFile :: RestoreMeter -> Handle -> FileDataGetter -> IO ()
+restoreFile rm desc getter = do
    loop
    where
       loop = do
          msg <- getter
          case msg of
             FileDataChunk chunk -> do
+               atomically $ incrementTVarBy (rmTotalSize rm) $
+                  toInteger $ chunkLength chunk
                L.hPut desc $ chunkData chunk
                loop
             FileDataDone -> return ()
