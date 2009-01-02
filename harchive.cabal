@@ -95,6 +95,7 @@ executable harchive
       Protocol.Chan
       Protocol.Control
       Protocol.Packing
+      System.Linux.Directory
 
 -- executable: hfile
 -- main-is: FileServer.hs

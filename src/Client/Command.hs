@@ -13,6 +13,7 @@ import Meter
 import Protocol.ClientPool
 import Protocol.Chan
 import Harchive.Store.Backup
+import Harchive.Dump
 import Harchive.IO
 import Pool
 import Pool.Remote
@@ -45,6 +46,7 @@ clientCommand cmd = do
 	    ["list", poolName] -> listBackups (getTopConfig opts) poolName id
 	    ["list", "--short", poolName] -> listBackups (getTopConfig opts) poolName latestBackup
 	    ["restore", poolName, hash, path] -> restoreBackup (getTopConfig opts) poolName hash path
+            ["dump", dir] -> dumpDir dir
 	    _ -> do
 	       hPutStrLn stderr $ usageText
 	       exitFailure
