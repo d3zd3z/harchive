@@ -7,7 +7,7 @@
 module System.Linux.Directory (
    module System.Posix.Directory,
    linuxReadDirStream,
-   LinuxDirInfo,
+   LinuxDirInfo(..),
    DirFileKind, dtUnknown, dtFifo, dtChr, dtDir, dtBlk, dtReg, dtLnk,
    dtSock, dtWht
 ) where
@@ -25,7 +25,11 @@ import Foreign
 import Foreign.C
 import Unsafe.Coerce
 
-type LinuxDirInfo = (FilePath, FileID, DirFileKind)
+data LinuxDirInfo = LinuxDirInfo {
+   dirInfoName :: FilePath,
+   dirInfoInode :: FileID,
+   dirInfoKind :: DirFileKind }
+   deriving (Eq, Show)
 
 -- |The Linux Directory operation returns additional information
 -- (filetype and inode number).  There are several useful things to do
@@ -51,7 +55,7 @@ linuxReadDirStream posixDir = do
                      ino <- dIno dEnt
                      kind <- dType dEnt
                      freeDirEnt dEnt
-                     return $ Just (name, ino, DirFileKind $ fromIntegral kind)
+                     return $ Just $ LinuxDirInfo name ino (DirFileKind $ fromIntegral kind)
             else do
                errno <- getErrno
                if (errno == eINTR) then loop dirp ptr_dEnt else do
