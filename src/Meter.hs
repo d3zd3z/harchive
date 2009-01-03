@@ -14,6 +14,8 @@ module Meter (
    makeIndicator, runIndicator, stopIndicator, indicatorIO,
    runIndicatorUpdate,
 
+   incrementTVar, incrementTVarBy,
+
    makeMeterCounter,
 
    module Control.Concurrent.STM,
@@ -152,6 +154,16 @@ makeRateCounter op counter = do
 	 mString $ printf "%8.1f" (op avg)
 
    return (instMeter, avgMeter, update)
+
+incrementTVar :: (Num a) => TVar a -> STM ()
+incrementTVar tv = do
+   old <- readTVar tv
+   writeTVar tv (old + 1)
+
+incrementTVarBy :: (Num a) => TVar a -> a -> STM ()
+incrementTVarBy tv amount = do
+   old <- readTVar tv
+   writeTVar tv (old + amount)
 
 ----------------------------------------------------------------------
 -- Automatic display of a progress meter.

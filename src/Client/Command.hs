@@ -128,16 +128,6 @@ withListingMeter total action = do
    stopIndicator ind True
    return result
 
-incrementTVar :: (Num a) => TVar a -> STM ()
-incrementTVar tv = do
-   old <- readTVar tv
-   writeTVar tv (old + 1)
-
-incrementTVarBy :: (Num a) => TVar a -> a -> STM ()
-incrementTVarBy tv amount = do
-   old <- readTVar tv
-   writeTVar tv (old + amount)
-
 -- Given a sorted list of backups, return only the newest backup of
 -- each host/volume combination.
 latestBackup :: [BackupItem] -> [BackupItem]
