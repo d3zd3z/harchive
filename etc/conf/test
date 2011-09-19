@@ -1,0 +1,2 @@
+test_command =
+	"sh ${quote ${ad}}/etc/run-test.sh ${quote ${ad}} ${text ${tdir 9999 ${file_name}}}";

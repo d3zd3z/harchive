@@ -1,7 +1,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 ----------------------------------------------------------------------
 -- Hashing operators
--- Copyright 2007, David Brown
+-- Copyright 2007, 2009, David Brown
 --
 -- This program is free software; you can redistribute it and/or modify it
 -- under the terms of the GNU General Public License as published by the
@@ -38,7 +38,8 @@ module Hash (
    toByteString,
    byteStringToHash,
 
-   hashBlockLength
+   hashBlockLength,
+   hashLength
 )where
 
 import Data.ByteString.Internal (create, toForeignPtr)

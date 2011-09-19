@@ -1,20 +1,20 @@
 name: harchive
-version: 0.2.1
-copyright: (C) 2007, David Brown
+version: 1.0.0
+copyright: (C) 2009, David Brown
 license: GPL
 license-file: COPYING
 author: David Brown <harchive@davidb.org>
 maintainer: David Brown <harchive@davidb.org>
-build-depends: base, binary >= 0.2, network, unix, parsec,
-	-- earlier versions of zlib work, but require a codechange (in
-	-- comments).
-	zlib >= 0.5,
-	mtl >= 1.0,
-	bytestring,
-	HDBC >= 1.1.3,
-	HDBC-sqlite3 >= 1.1.3,
-	dataenc >= 0.11.1,
-	directory >= 1
+build-depends: base >= 4.0, binary >= 0.2, network, unix, parsec,
+        -- earlier versions of zlib work, but require a codechange (in
+        -- comments).
+        zlib >= 0.5,
+        mtl >= 1.0,
+        bytestring,
+        -- HDBC >= 1.1.3,
+        -- HDBC-sqlite3 >= 1.1.3,
+        dataenc >= 0.11.1,
+        directory >= 1
 category: System
 synopsis: Networked content addressed backup and restore software.
 description:
@@ -24,77 +24,108 @@ homepage: http://www.davidb.org/darcs/harchive/
 build-type: Simple
 Cabal-Version: >= 1.2
 
--- Build this into a library for the unit test code.
 library
-   hs-source-dirs: src
-   build-depends:
-      base, binary >= 0.2, zlib, parsec,
-      unix >= 2.0,
-      bytestring,
-      HDBC >= 1.1.3,
-      mtl >= 1.0,
-      HDBC-sqlite3 >= 1.1.3,
-      dataenc >= 0.11.1,
-      directory >= 1,
-      filepath >= 1.1,
-      containers >= 0.1,
-      network >= 2.1,
-      stm >= 2.1,
-      dlist >= 0.4,
-      time >= 1.1.2, old-locale,
-      utf8-string >= 0.3
-   ghc-options: -Wall
-   extra-libraries: ssl
-   exposed-modules:
-      Hash
-      HexDump
-      Chunk
-      Chunk.IO
-      DB
-      Pool
-      Pool.Local
-      Pool.Memory
-      Auth
-      Server
-      Meter
-      Protocol.Packing
-   other-modules:
-      MBox
-      Status
-      Protocol
+        hs-source-dirs: src
+        build-depends:
+                base >= 4.0,
+                binary >= 0.2,
+                bytestring,
+                containers,
+                directory >= 1.0,
+                filepath >= 1.1,
+                mtl >= 1.0,
+                old-locale,
+                time,
+                unix,
+                zlib >= 0.5
+        ghc-options: -Wall
+        exposed-modules:
+                Hello
+                Hash
+                System.Linux.Directory
+                System.Backup.Chunk
+                System.Backup.Chunk.IO
+                System.Backup.BinProp
+                System.Backup.HashMap
+                System.Backup.HashMap.File
+                Text.HexDump
+        other-modules:
+        extra-libraries: ssl
 
--- Initial experiementation with ldump compatability.
-executable hcat
-   main-is: HCat.hs
-   hs-source-dirs: src
-   ghc-options: -Wall
-   extra-libraries: ssl
-   Other-Modules:
-      Hash
-      HexDump
-      Chunk
-      Chunk.IO
+-- -- Build this into a library for the unit test code.
+-- library
+--    hs-source-dirs: src
+--    build-depends:
+--       base
+--       -- base, binary >= 0.2, zlib, parsec,
+--       -- unix >= 2.0,
+--       -- bytestring,
+--       -- HDBC >= 1.1.3,
+--       -- mtl >= 1.0,
+--       -- HDBC-sqlite3 >= 1.1.3,
+--       -- dataenc >= 0.11.1,
+--       -- directory >= 1,
+--       -- filepath >= 1.1,
+--       -- containers >= 0.1,
+--       -- network >= 2.1,
+--       -- stm >= 2.1,
+--       -- dlist >= 0.4,
+--       -- time >= 1.1.2, old-locale,
+--       -- utf8-string >= 0.3
+--    ghc-options: -Wall
+--    extra-libraries: ssl
+--    exposed-modules:
+--       -- Hash
+--       -- HexDump
+--       -- Chunk
+--       -- Chunk.IO
+--       -- DB
+--       -- Pool
+--       -- Pool.Local
+--       -- Pool.Memory
+--       -- Auth
+--       -- Server
+--       -- Meter
+--       -- Protocol.Packing
+--    -- other-modules:
+--    --    MBox
+--    --    Status
+--    --    Protocol
 
-executable harchive
-   main-is: Harchive.hs
-   hs-source-dirs: src
-   ghc-options: -Wall
-   extra-libraries: ssl
-   Other-Modules:
-      Hash
-      HexDump
-      Chunk
-      Chunk.IO
-      Harchive.Store.Sexp
-      Status
-      Meter
-      MBox
-      Tree
-      Pool
-      Pool.Local
-      Protocol.Chan
-      Protocol.Control
-      Protocol.Packing
+-- -- Initial experiementation with ldump compatability.
+-- executable hello
+--    main-is: Hello.hs
+--    hs-source-dirs: src
+--    ghc-options: -Wall
+--    extra-libraries: ssl
+--    build-depends:
+--       base
+--    -- Other-Modules:
+--    --    Hash
+--    --    HexDump
+--    --    Chunk
+--    --    Chunk.IO
+
+-- executable harchive
+--    main-is: Harchive.hs
+--    hs-source-dirs: src
+--    ghc-options: -Wall
+--    extra-libraries: ssl
+--    Other-Modules:
+--       Hash
+--       HexDump
+--       Chunk
+--       Chunk.IO
+--       Harchive.Store.Sexp
+--       Status
+--       Meter
+--       MBox
+--       Tree
+--       Pool
+--       Pool.Local
+--       Protocol.Chan
+--       Protocol.Control
+--       Protocol.Packing
 
 -- executable: hfile
 -- main-is: FileServer.hs
@@ -124,3 +155,5 @@ executable harchive
 --   Protocol
 --   Sqlite3
 --   Store
+
+-- vim: set expandtab:

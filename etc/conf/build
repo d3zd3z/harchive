@@ -1,0 +1,9 @@
+/* Build using cabal. */
+
+build_command =
+	"set -e; "
+	"runghc Setup.hs clean; "
+	"sh etc/build.sh ${quote $baseline}";
+
+development_build_command =
+	"sh etc/build.sh ${quote $baseline}";
