@@ -5,7 +5,6 @@ module HashCheck (hashCheck) where
 
 import Hash
 import Test.HUnit
-import Harness
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 

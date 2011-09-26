@@ -23,7 +23,6 @@ import Data.Binary.Put
 import Data.Binary.Get
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
-import qualified Data.ByteString.Lazy.Char8 as LC
 import Data.Char (isDigit)
 import Data.List (sortBy, stripPrefix)
 import qualified Data.Map as M
@@ -89,9 +88,9 @@ type HashMapIO v = ReaderT (HRead v) (StateT (HState v) IO)
 
 runHashMap :: HashMap v -> HashMapIO v a -> IO a
 runHashMap (HashMap hm@(HRead { hmState = stateVar })) op =
-   modifyMVar stateVar $ \state -> do
-      (a, state') <- runStateT work state
-      return (state', a)
+   modifyMVar stateVar $ \st -> do
+      (a, st') <- runStateT work st
+      return (st', a)
    where
       work = runReaderT op hm
 
@@ -106,10 +105,10 @@ openHashMap vinfo path prefix mode = do
    (props, lastCombine) <- getProps namer indexFiles
    (curMap, indexes, next) <- readMaps namer vinfo lastCombine indexFiles
 
-   let state = HState { hsMap = curMap, hsNext = next,
+   let st = HState { hsMap = curMap, hsNext = next,
       hsIndexes = indexes, hsProperties = props,
       hsDirty = False }
-   stateVar <- newMVar state
+   stateVar <- newMVar st
    return $ HashMap HRead {
       hmState = stateVar,
       hmValueInfo = vinfo,

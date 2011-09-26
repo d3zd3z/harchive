@@ -6,7 +6,6 @@ import qualified Hash
 import System.Backup.HashMap.File
 
 import Test.HUnit
-import Harness
 import Data.Bits (xor)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as LC
@@ -29,10 +28,10 @@ hashMapFileCheck = test $ do
    mapM_ (testKey bigLook) [1..200]
 
 testKey :: (Hash.Hash -> Maybe Int) -> Int -> Assertion
-testKey lookup key = do
+testKey look key = do
    let k = iKey key
-   lookup k @=? Just key
-   lookup (hashMangle k) @=? Nothing
+   look k @=? Just key
+   look (hashMangle k) @=? Nothing
 
 hashMangle :: Hash.Hash -> Hash.Hash
 hashMangle = Hash.byteStringToHash . frob . Hash.toByteString

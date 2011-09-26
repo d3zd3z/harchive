@@ -2,7 +2,6 @@
 
 module ChunkIOCheck (testChunkIO) where
 
-import qualified Hash
 import System.Backup.Chunk
 import System.Backup.Chunk.IO
 
@@ -10,10 +9,10 @@ import qualified Control.Exception as E
 import Control.Monad (forM_)
 import qualified Data.ByteString.Lazy.Char8 as L8
 import System.FilePath ((</>))
-import System.Process (rawSystem)
+-- import System.Process (rawSystem)
 import Text.Printf
 
-import Test.HUnit
+import Test.HUnit hiding (path)
 import TmpDir
 import GenWords
 

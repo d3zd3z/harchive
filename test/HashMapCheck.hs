@@ -8,15 +8,14 @@ import System.Backup.HashMap
 
 import qualified Control.Exception as E
 import qualified Data.Map as M
-import Control.Monad (forM_, forM, unless)
+import Control.Monad (forM_)
 import qualified Data.ByteString.Lazy.Char8 as LC
 import qualified System.Posix as P
 import Data.List (isPrefixOf, sort)
-import System.Process (rawSystem)
+-- import System.Process (rawSystem)
 import System.FilePath ((</>))
 
-import Test.HUnit
-import Harness
+import Test.HUnit hiding (path)
 import TmpDir
 
 hashMapCheck :: Test
@@ -97,7 +96,7 @@ indexPrefix = "index-"
 mustThrow :: IO a -> IO ()
 mustThrow op = do
    (op >> assertFailure "operation didn't throw exception") `E.catch`
-      \(e :: E.ErrorCall) -> do
+      \(_e :: E.ErrorCall) -> do
          -- putStrLn $ "Expected exception: " ++ show e
          return ()
 

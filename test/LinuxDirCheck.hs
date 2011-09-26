@@ -40,7 +40,7 @@ getNames names str = do
 
 linuxGetNames :: [(String, FileID)] -> DirStream -> IO [(String, FileID)]
 linuxGetNames names str = do
-   f@(name, id) <- linuxReadDirStream str
+   f@(name, _inode) <- linuxReadDirStream str
    case name of
       "" -> return names
       "." -> linuxGetNames names str

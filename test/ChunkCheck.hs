@@ -8,10 +8,10 @@ import qualified Data.ByteString as B
 
 import System.Backup.Chunk
 import Test.HUnit
-import Text.HexDump
+-- import Text.HexDump
 import Hash
 
-import GenWords
+-- import GenWords
 
 testChunk :: Test
 testChunk = test $ do

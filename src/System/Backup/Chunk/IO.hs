@@ -36,9 +36,9 @@ type ChunkIO = ReaderT String (StateT HandleState IO)
 
 runChunkIO :: ChunkFile -> ChunkIO a -> IO a
 runChunkIO (ChunkFile { csHandleState = stateVar, csPath = path }) op =
-   modifyMVar stateVar $ \state -> do
-      (a, state') <- runStateT work state
-      return (state', a)
+   modifyMVar stateVar $ \st -> do
+      (a, st') <- runStateT work st
+      return (st', a)
    where work = runReaderT op path
 
 openChunkFile :: FilePath -> IOMode -> IO ChunkFile
