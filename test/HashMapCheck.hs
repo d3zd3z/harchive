@@ -1,7 +1,7 @@
 ----------------------------------------------------------------------
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Main where
+module HashMapCheck (hashMapCheck) where
 
 import qualified Hash
 import System.Backup.HashMap
@@ -19,8 +19,12 @@ import Test.HUnit
 import Harness
 import TmpDir
 
-main :: IO ()
-main = runTests $ test [simple, noDirty, doesFlush, checkReadOnly]
+hashMapCheck :: Test
+hashMapCheck = test [
+   "simple" ~: simple,
+   "noDirty" ~: noDirty,
+   "doesFlush" ~: doesFlush,
+   "checkReadOnly" ~: checkReadOnly ]
 
 simple :: IO ()
 simple =
@@ -93,7 +97,9 @@ indexPrefix = "index-"
 mustThrow :: IO a -> IO ()
 mustThrow op = do
    (op >> assertFailure "operation didn't throw exception") `E.catch`
-      \(e :: E.ErrorCall) -> putStrLn $ "Expected exception: " ++ show e
+      \(e :: E.ErrorCall) -> do
+         -- putStrLn $ "Expected exception: " ++ show e
+         return ()
 
 -- Perform 'op' over an opened hashmap, and close the hashmap.
 withHashMap :: FilePath -> (HashMap Int -> IO a) -> IO a

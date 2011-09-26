@@ -1,23 +1,19 @@
 ----------------------------------------------------------------------
 -- Testing binary property encoding.
 
-module Main where
+module BinPropCheck (binPropCheck) where
 
 import Data.Bits ((.&.))
 import qualified Data.ByteString.Lazy.Char8 as LC
 import qualified Data.Map as M
 import System.Random
 
+import Test.HUnit
 import System.Backup.BinProp
 import Text.Printf
 
-import Harness
-
-main :: IO ()
-main = runTests tests
-
-tests :: Test
-tests = test $ do
+binPropCheck :: Test
+binPropCheck = test $ do
    roundTrip 1
    roundTrip 400
    roundTrip 10000

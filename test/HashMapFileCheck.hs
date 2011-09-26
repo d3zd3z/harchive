@@ -1,6 +1,6 @@
 ----------------------------------------------------------------------
 
-module Main where
+module HashMapFileCheck (hashMapFileCheck) where
 
 import qualified Hash
 import System.Backup.HashMap.File
@@ -15,11 +15,8 @@ import qualified Data.Map as M
 import Data.Binary.Put (runPut, putWord32be, Put)
 import Data.Binary.Get (Get, getWord32be)
 
-main :: IO ()
-main = runTests t1
-
-t1 :: Test
-t1 = test $ do
+hashMapFileCheck :: Test
+hashMapFileCheck = test $ do
    let raw1 = makeMap [1..100]
    let look1 = lookuper raw1
    mapM_ (testKey look1) [1..100]

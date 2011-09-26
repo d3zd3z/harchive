@@ -1,23 +1,20 @@
 ----------------------------------------------------------------------
 -- Test chunk support.
 
-module Main where
+module ChunkCheck (testChunk) where
 
 import qualified Data.ByteString.Lazy.Char8 as LChar (pack)
 import qualified Data.ByteString as B
 
 import System.Backup.Chunk
+import Test.HUnit
 import Text.HexDump
 import Hash
 
 import GenWords
-import Harness
 
-main :: IO ()
-main = runTests tests
-
-tests :: Test
-tests = test $ do
+testChunk :: Test
+testChunk = test $ do
    let c1 = byteStringToChunk "blob" (LChar.pack "Sample chunk one")
    let h1 = B.pack [
          0x67, 0x40, 0x35, 0x7c, 0x3c, 0x44, 0x4c, 0xd5, 0x2f, 0x9c,

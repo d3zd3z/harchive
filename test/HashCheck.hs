@@ -1,7 +1,7 @@
 ----------------------------------------------------------------------
 -- Verify hashes.
 
-module Main where
+module HashCheck (hashCheck) where
 
 import Hash
 import Test.HUnit
@@ -9,8 +9,8 @@ import Harness
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 
-hashes :: Test
-hashes = test [
+hashCheck :: Test
+hashCheck = test [
    -- These we just know.
    hashBlockLength ~?= 64,
    hashLength ~?= 20,
@@ -23,9 +23,3 @@ hashes = test [
       (Hash . B.pack) [ 0xc9, 0x5a, 0xd0, 0xce, 0x54, 0xf9, 0x03, 0xe1, 0x56, 0x8f, 0xac,
         0xb2, 0xb1, 0x20, 0xca, 0x92, 0x10, 0xf6, 0x77, 0x8f ]
    ]
-
-tests :: Test
-tests = test [ hashes ]
-
-main :: IO ()
-main = runTests tests

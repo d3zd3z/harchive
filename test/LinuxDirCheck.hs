@@ -1,10 +1,9 @@
 ----------------------------------------------------------------------
 -- Testing Linux directory operations.
 
-module Main where
+module LinuxDirCheck (testLinux) where
 
 import Test.HUnit
-import Harness
 
 import System.Linux.Directory
 import System.Posix.Files (getSymbolicLinkStatus, fileID)
@@ -15,9 +14,6 @@ import Control.Monad (liftM)
 import Control.Exception (bracket)
 import Data.Function (on)
 import Data.List (sort, sortBy)
-
-main :: IO ()
-main = runTests testLinux
 
 testLinux :: Test
 testLinux = test $ do

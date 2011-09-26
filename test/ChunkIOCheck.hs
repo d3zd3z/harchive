@@ -1,6 +1,6 @@
 ----------------------------------------------------------------------
 
-module Main where
+module ChunkIOCheck (testChunkIO) where
 
 import qualified Hash
 import System.Backup.Chunk
@@ -14,15 +14,11 @@ import System.Process (rawSystem)
 import Text.Printf
 
 import Test.HUnit
-import Harness
 import TmpDir
 import GenWords
 
-main :: IO ()
-main = runTests $ test [chunks]
-
-chunks :: IO ()
-chunks = withTmpDir $ \tmp -> do
+testChunkIO :: Test
+testChunkIO = test $ withTmpDir $ \tmp -> do
    let sizes = [100,200..5000] ++ [32*1024, 64*1024 .. 256*1024]
    withChunkFile (tmp </> "data.dat") AppendMode $ \cf -> do
       forM_ sizes $ \i ->

@@ -22,13 +22,13 @@ description:
   data to a content addressed storage pool.  Very preliminary version.
 homepage: http://www.davidb.org/darcs/harchive/
 build-type: Simple
-Cabal-Version: >= 1.2
+Cabal-Version: >= 1.8
 
 library
         hs-source-dirs: src
         build-depends:
                 base >= 4.0,
-                binary >= 0.2,
+                binary >= 0.2 && < 0.6,
                 bytestring,
                 containers,
                 directory >= 1.0,
@@ -50,7 +50,26 @@ library
                 System.Backup.HashMap.File
                 Text.HexDump
         other-modules:
-        extra-libraries: ssl
+        extra-libraries: crypto
+
+executable run-tests
+        hs-source-dirs: test
+        main-is: All.hs
+        build-depends:
+                base,
+                array,
+                binary >= 0.5 && < 0.6,
+                bytestring >= 0.9 && < 0.10,
+                containers,
+                directory,
+                harchive,
+                HUnit,
+                filepath >= 1.1,
+                process,
+                random,
+                unix,
+                test-framework,
+                test-framework-hunit
 
 -- -- Build this into a library for the unit test code.
 -- library
