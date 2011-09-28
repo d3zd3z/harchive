@@ -37,7 +37,8 @@ library
                 old-locale,
                 time,
                 unix,
-                zlib >= 0.5
+                zlib >= 0.5,
+                convertible-text >= 0.3 && < 0.4
         ghc-options: -Wall -Werror
         exposed-modules:
                 Hello

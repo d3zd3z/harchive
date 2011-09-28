@@ -1,4 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 ----------------------------------------------------------------------
 -- Hashing operators
 -- Copyright 2007, 2009, David Brown
@@ -26,9 +28,6 @@
 --
 ----------------------------------------------------------------------
 
--- TODO: Make a Hashable class so that hash can operate on
--- multiple types.
-
 module Hash (
    Hash(..),
    -- Instances Eq, Show, Binary
@@ -42,6 +41,7 @@ module Hash (
 )where
 
 import Data.ByteString.Internal (create, toForeignPtr)
+import Data.Convertible.Text (ConvertSuccess, cs)
 import Control.Monad (forM_, liftM)
 import Foreign
 import Foreign.C
@@ -98,9 +98,11 @@ hashBlockLength :: Int
 hashBlockLength = (#const SHA_CBLOCK)
 
 ----------------------------------------------------------------------
--- Lazily construct a hash from a lazy bytestream of data.
-hashOf :: L.ByteString -> Hash
-hashOf bstr = unsafePerformIO $ hashOfIO bstr
+
+-- Compute hashes of anything that convertible-text knows how to make
+-- into a lazy byte string.
+hashOf :: ConvertSuccess a L.ByteString => a -> Hash
+hashOf = unsafePerformIO . hashOfIO . cs
 
 hashOfIO :: L.ByteString -> IO Hash
 hashOfIO bstr = do
