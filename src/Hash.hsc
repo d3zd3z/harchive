@@ -35,7 +35,6 @@ module Hash (
 
    hashOf, hashOfIO,
    toHex, fromHex,
-   toByteString,
    byteStringToHash,
 
    hashBlockLength,
@@ -60,7 +59,7 @@ import Data.Binary.Get (getByteString)
 #include <openssl/sha.h>
 
 -- The hash result type is abstract.
-newtype Hash = Hash B.ByteString
+newtype Hash = Hash { unHash :: B.ByteString }
    deriving (Eq, Ord)
 
 instance Show Hash where
@@ -68,9 +67,6 @@ instance Show Hash where
       showString "fromHex \"" .
       showString (toHex h) .
       showChar '"'
-
-toByteString :: Hash -> B.ByteString
-toByteString (Hash h) = h
 
 byteStringToHash :: B.ByteString -> Hash
 byteStringToHash h | B.length h == fromIntegral hashLength = Hash h

@@ -27,7 +27,7 @@ putHashMap putVal = putOrderedMap putVal . M.toAscList
 putOrderedMap :: (a -> Put) -> [(Hash.Hash, a)] -> Put
 putOrderedMap putVal m =
    forM_ m $ \(k, v) -> do
-      putByteString $ Hash.toByteString k
+      putByteString $ Hash.unHash k
       putVal v
 
 ----------------------------------------------------------------------

@@ -123,7 +123,7 @@ getPayload fd = do
                   then byteStringToChunk kind lazyPayload
                   else zDataToChunk kind lazyPayload (fromIntegral uclen)
             -- TODO: Make this check optional.
-            unless (hash == Hash.toByteString (chunkHash chunk)) $
+            unless (hash == Hash.unHash (chunkHash chunk)) $
                ioError $ userError "Hash mismatch"
             return (chunk, fromIntegral clen)
 
@@ -138,7 +138,7 @@ putChunk chunk = do
    putWord32le $ fromIntegral $ L.length payload
    putWord32le uclen
    putByteString $ B8.pack $ chunkKind chunk
-   putByteString $ Hash.toByteString $ chunkHash chunk
+   putByteString $ Hash.unHash $ chunkHash chunk
    putLazyByteString payload
    putByteString $ B.replicate (padLen 16 $ fromIntegral $ L.length payload) 0
 

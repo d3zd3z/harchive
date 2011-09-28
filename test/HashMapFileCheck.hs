@@ -34,7 +34,7 @@ testKey look key = do
    look (hashMangle k) @=? Nothing
 
 hashMangle :: Hash.Hash -> Hash.Hash
-hashMangle = Hash.byteStringToHash . frob . Hash.toByteString
+hashMangle = Hash.byteStringToHash . frob . Hash.unHash
    where
       frob bs = B.snoc (B.init bs) (B.last bs `xor` 1)
 
