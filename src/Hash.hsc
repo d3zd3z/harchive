@@ -59,7 +59,7 @@ import Data.Binary.Get (getByteString)
 #include <openssl/sha.h>
 
 -- The hash result type is abstract.
-newtype Hash = Hash { unHash :: B.ByteString }
+newtype Hash = RawHash { unHash :: B.ByteString }
    deriving (Eq, Ord)
 
 instance Show Hash where
@@ -68,27 +68,28 @@ instance Show Hash where
       showString (toHex h) .
       showChar '"'
 
+-- Construct a raw hash.
 byteStringToHash :: B.ByteString -> Hash
-byteStringToHash h | B.length h == fromIntegral hashLength = Hash h
+byteStringToHash h | B.length h == fromIntegral hashLength = RawHash h
 byteStringToHash _ = error "Invalid hash length"
 
 toHex :: Hash -> String
-toHex (Hash h) = hexify h
+toHex (RawHash h) = hexify h
 
 fromHex :: String -> Hash
 fromHex str =
    case unhexify str of
-      h | B.length h == hashLength -> Hash h
+      h | B.length h == hashLength -> RawHash h
         | otherwise -> error $  "Hash must be " ++ show (hashLength * 2) ++ " hex digits"
 
 -- Simple, compatible implementation.  Eventually change this to only
 -- output the correct length bytes of the hash, instead of the full
 -- amount.
 instance Binary Hash where
-   put (Hash h) = putByteString h
+   put (RawHash h) = putByteString h
    get = do
       res <- getByteString hashLength
-      return $ Hash res
+      return $ RawHash res
 
 hashLength :: Int
 hashLength = (#const SHA_DIGEST_LENGTH)
@@ -112,7 +113,7 @@ hashOfIO bstr = do
 	 c_sha1Update ctx bdata blen
 
    -- Copy out the hash result.
-   liftM Hash $ create hashLength $ \p ->
+   liftM RawHash $ create hashLength $ \p ->
       c_sha1Final p ctx
 
 unsafeUseAsCString :: B.ByteString -> (CString -> IO a) -> IO a
