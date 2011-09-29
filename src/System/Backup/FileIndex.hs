@@ -9,7 +9,7 @@
 module System.Backup.FileIndex (
    Indexer(..),
    RamIndex,
-   FileIndex,
+   PackedIndex,
    writeIndex,
    readIndex
 ) where
@@ -125,19 +125,19 @@ newtype Kinds = Kinds { unKinds :: B.ByteString }
 type TopInfo = U.UArray Int Word32
 type OffsetInfo = U.UArray Int Word32
 
-data FileIndex = FileIndex {
-   fiPoolSize :: Word32,
-   fiTop :: TopInfo,
-   fiHashes :: Hashes,
-   fiOffsets :: Offsets,
-   fiKinds :: Kinds }
+data PackedIndex = PackedIndex {
+   piPoolSize :: Word32,
+   piTop :: TopInfo,
+   piHashes :: Hashes,
+   piOffsets :: Offsets,
+   piKinds :: Kinds }
 
-readIndex :: FilePath -> IO FileIndex
+readIndex :: FilePath -> IO PackedIndex
 readIndex path = do
    payload <- L.readFile path
    return $! runGet getIndex payload
 
-getIndex :: Get FileIndex
+getIndex :: Get PackedIndex
 getIndex = do
    poolSize <- getHeader
    top <- getTops
@@ -145,11 +145,11 @@ getIndex = do
    hashes <- getHashes len
    ofs <- getOffsets len
    knd <- getKinds len
-   return $! FileIndex {
-      fiPoolSize = poolSize, fiTop = top,
-      fiHashes = hashes,
-      fiOffsets = ofs,
-      fiKinds = knd }
+   return $! PackedIndex {
+      piPoolSize = poolSize, piTop = top,
+      piHashes = hashes,
+      piOffsets = ofs,
+      piKinds = knd }
 
 getHeader :: Get Word32
 getHeader = do
@@ -180,28 +180,28 @@ extract :: Int -> Int -> B.ByteString -> B.ByteString
 extract itemSpan index =
    B.take itemSpan . B.drop (itemSpan * index)
 
-fiLength :: FileIndex -> Int
--- fiLength = (`div` 20) . B.length . unHashes . fiHashes
-fiLength idx = fromIntegral $ (fiTop idx) U.! 255
+piLength :: PackedIndex -> Int
+-- piLength = (`div` 20) . B.length . unHashes . piHashes
+piLength idx = fromIntegral $ (piTop idx) U.! 255
 
-getTop :: FileIndex -> Int -> Int
+getTop :: PackedIndex -> Int -> Int
 getTop idx i
    | i < 0     = 0
-   | otherwise = fromIntegral $ (fiTop idx U.! i)
+   | otherwise = fromIntegral $ (piTop idx U.! i)
 
-getHash :: FileIndex -> Int -> Hash.Hash
-getHash fi index = Hash.byteStringToHash $ extract 20 index $ unHashes $ fiHashes fi
+getHash :: PackedIndex -> Int -> Hash.Hash
+getHash fi index = Hash.byteStringToHash $ extract 20 index $ unHashes $ piHashes fi
 
-getOffset :: FileIndex -> Int -> Word32
-getOffset fi index = (unOffsets $ fiOffsets fi) U.! index
+getOffset :: PackedIndex -> Int -> Word32
+getOffset fi index = (unOffsets $ piOffsets fi) U.! index
 
-getKind :: FileIndex -> Int -> String
+getKind :: PackedIndex -> Int -> String
 getKind fi index =
-   let bytes = extract 4 index $ unKinds $ fiKinds fi in
+   let bytes = extract 4 index $ unKinds $ piKinds fi in
    cs bytes
 
 -- Perform a binary search and return the index if it has been found.
-findHash :: FileIndex -> Hash.Hash -> Maybe Int
+findHash :: PackedIndex -> Hash.Hash -> Maybe Int
 findHash fi key =
    loop (getTop fi (topByte - 1)) (getTop fi topByte - 1) where
 
@@ -216,19 +216,19 @@ findHash fi key =
                   LT -> loop (mid + 1) high
                   EQ -> Just mid
 
-fileIndexLookup :: FileIndex -> Hash.Hash -> Maybe (Word32, String)
-fileIndexLookup fi key = do
+packedIndexLookup :: PackedIndex -> Hash.Hash -> Maybe (Word32, String)
+packedIndexLookup fi key = do
    pos <- findHash fi key
    return (getOffset fi pos, getKind fi pos)
 
-fiWalk :: (FileIndex -> Int -> a) -> FileIndex -> [a]
-fiWalk op fi = [op fi x | x <- [0 .. fiLength fi - 1]]
+piWalk :: (PackedIndex -> Int -> a) -> PackedIndex -> [a]
+piWalk op fi = [op fi x | x <- [0 .. piLength fi - 1]]
 
-instance Indexer FileIndex where
-   ixKeys = fiWalk getHash
-   ixOffsets = fiWalk getOffset
-   ixKinds = fiWalk getKind
+instance Indexer PackedIndex where
+   ixKeys = piWalk getHash
+   ixOffsets = piWalk getOffset
+   ixKinds = piWalk getKind
 
-   ixToList = fiWalk (\fi pos -> (getHash fi pos, (getOffset fi pos, getKind fi pos)))
-   ixLookup = flip fileIndexLookup
-   ixInsert = error "Insert not supported for FileIndex"
+   ixToList = piWalk (\fi pos -> (getHash fi pos, (getOffset fi pos, getKind fi pos)))
+   ixLookup = flip packedIndexLookup
+   ixInsert = error "Insert not supported for PackedIndex"
