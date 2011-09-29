@@ -8,6 +8,7 @@
 
 module System.Backup.FileIndex (
    Indexer(..),
+   FileIndex,
    RamIndex,
    PackedIndex,
    writeIndex,
@@ -16,7 +17,7 @@ module System.Backup.FileIndex (
 
 import Control.Applicative ((<$>))
 import Control.Exception (assert)
-import Control.Monad (forM_, replicateM, unless)
+import Control.Monad (forM_, mplus, replicateM, unless)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Array.Unboxed as U
@@ -48,6 +49,14 @@ class Indexer a where
    ixToList :: a -> [(Hash.Hash, (Word32, String))]
    ixLookup :: Hash.Hash -> a -> Maybe (Word32, String)
    ixInsert :: Hash.Hash -> (Word32, String) -> a -> a
+
+ixMerge :: Indexer a => Indexer b => a -> b -> [(Hash.Hash, (Word32, String))]
+ixMerge left right = merge (ixToList left) (ixToList right) where
+   merge a [] = a
+   merge [] b = b
+   merge aall@(a@(akey, _):as) ball@(b@(bkey, _):bs)
+      | akey < bkey = a : merge as ball
+      | otherwise   = b : merge aall bs
 
 writeIndex :: Indexer a => FilePath -> Word32 -> a -> IO ()
 writeIndex path poolSize idx = do
@@ -132,8 +141,8 @@ data PackedIndex = PackedIndex {
    piOffsets :: Offsets,
    piKinds :: Kinds }
 
-readIndex :: FilePath -> IO PackedIndex
-readIndex path = do
+readPackedIndex :: FilePath -> IO PackedIndex
+readPackedIndex path = do
    payload <- L.readFile path
    return $! runGet getIndex payload
 
@@ -232,3 +241,25 @@ instance Indexer PackedIndex where
    ixToList = piWalk (\fi pos -> (getHash fi pos, (getOffset fi pos, getKind fi pos)))
    ixLookup = flip packedIndexLookup
    ixInsert = error "Insert not supported for PackedIndex"
+
+----------------------------------------------------------------------
+-- A FileIndex is a combination of a packed index read from a file,
+-- and a RamIndex to allow updates.
+
+data FileIndex = FileIndex {
+   fiPacked :: PackedIndex,
+   fiRam    :: RamIndex }
+
+readIndex :: FilePath -> IO FileIndex
+readIndex path = do
+   packed <- readPackedIndex path
+   return $ FileIndex { fiPacked = packed, fiRam = Map.empty }
+
+instance Indexer FileIndex where
+   ixKeys = map (\ (k, _) -> k) . ixToList
+   ixOffsets = map (\ (_, (o, _)) -> o) . ixToList
+   ixKinds = map (\ (_, (_, k)) -> k) . ixToList
+
+   ixToList fi = ixMerge (fiRam fi) (fiPacked fi)
+   ixLookup key idx = ixLookup key (fiRam idx) `mplus` ixLookup key (fiPacked idx)
+   ixInsert k v idx = idx { fiRam = ixInsert k v (fiRam idx) }

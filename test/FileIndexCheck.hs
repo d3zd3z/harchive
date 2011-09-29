@@ -3,6 +3,7 @@ module FileIndexCheck (fileIndexCheck) where
 import Data.Array
 import Data.Bits ((.&.), xor)
 import qualified Data.ByteString as B
+import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Word (Word32)
@@ -23,7 +24,8 @@ import Data.Convertible.Text (cs)
 fileIndexCheck :: Test
 fileIndexCheck = test [
    "Verify test framework" ~: frameworkTest,
-   "Simple writing test" ~: ioTest ]
+   "Simple writing test" ~: ioTest,
+   "Rewriting" ~: rewriteTest ]
 
 frameworkTest :: Test
 frameworkTest =
@@ -38,6 +40,28 @@ ioTest = do
    writeIndex name 42 base
    ix2 <- readIndex name
    checkIndexer ix2 (ixToList base) @=? []
+
+rewriteTest :: IO ()
+rewriteTest = do
+   withTmpDir $ \dir -> do
+   let name = dir ++ "/file2.idx"
+   let (part1, part2) = List.splitAt 50000 $ Map.toList $ randomRamMap 100000
+   writeIndex name 50 (Map.fromList part1)
+   ix1 <- readIndex name
+   checkIndexer ix1 part1 @=? []
+
+   -- Rewrite with no changes.
+   writeIndex name 50 ix1
+   ix1' <- readIndex name
+   checkIndexer ix1' part1 @=? []
+
+   -- Add in part2.
+   let i2src = List.foldl' update ix1' part2
+   writeIndex name 100 i2src
+   ix2 <- readIndex name
+   checkIndexer ix2 (part1 ++ part2) @=? []
+   where
+      update idx (k, v) = ixInsert k v idx
 
 -- Make sure that all of the keys lookup correctly, and that invalid
 -- keys don't.  Returns a list of failures, empty list being success.
