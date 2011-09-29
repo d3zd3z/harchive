@@ -1,0 +1,2 @@
+:set -idist/build:src:test
+:set -lcrypto

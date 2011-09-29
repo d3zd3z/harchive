@@ -35,6 +35,7 @@ module Hash (
    hashOf, hashOfIO,
    toHex, fromHex,
    byteStringToHash,
+   getHashByte,
 
    hashBlockLength,
    hashLength
@@ -61,6 +62,10 @@ import Data.Binary.Get (getByteString)
 -- The hash result type is abstract.
 newtype Hash = RawHash { unHash :: B.ByteString }
    deriving (Eq, Ord)
+
+-- Return the given byte out of a hash.
+getHashByte :: Int -> Hash -> Word8
+getHashByte ofs h = B.index (unHash h) ofs
 
 instance Show Hash where
    showsPrec _ h =

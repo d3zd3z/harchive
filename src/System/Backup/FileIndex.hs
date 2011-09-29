@@ -1,0 +1,234 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+----------------------------------------------------------------------
+-- Pool file index.
+----------------------------------------------------------------------
+-- Each pool file has an associated index file tha maps the offsets of
+-- the contained hashes in that file.
+----------------------------------------------------------------------
+
+module System.Backup.FileIndex (
+   Indexer(..),
+   RamIndex,
+   FileIndex,
+   writeIndex,
+   readIndex
+) where
+
+import Control.Applicative ((<$>))
+import Control.Exception (assert)
+import Control.Monad (forM_, replicateM, unless)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as L
+import qualified Data.Array.Unboxed as U
+import Data.Binary
+import Data.Binary.Put
+import Data.Binary.Get
+import Data.Convertible.Text (cs)
+-- import Data.Word (Word32)
+import Data.Map (Map)
+import qualified Data.Map as Map
+import qualified Hash
+import qualified System.IO.Cautious as Cautious
+
+-- Note that this code makes an assumption that Data.Map.Map keeps its
+-- data sorted by key.  Another Map could be used, but the results
+-- would have to be sorted.
+
+indexMagic :: B.ByteString
+indexMagic = cs "ldumpidx"
+
+class Indexer a where
+   -- Queries directly of each piece.  Faster than ixToList and
+   -- extracting the desired value.
+   ixKeys :: a -> [Hash.Hash]
+   ixOffsets :: a -> [Word32]
+   ixKinds :: a -> [String]
+
+   -- Operations directly from lists
+   ixToList :: a -> [(Hash.Hash, (Word32, String))]
+   ixLookup :: Hash.Hash -> a -> Maybe (Word32, String)
+   ixInsert :: Hash.Hash -> (Word32, String) -> a -> a
+
+writeIndex :: Indexer a => FilePath -> Word32 -> a -> IO ()
+writeIndex path poolSize idx = do
+   let payload = runPut $ putIndex poolSize idx
+   Cautious.writeFileL  path payload
+
+-- As the data is built up, values are placed in a RAM index first.
+-- This is just a simple map from hashes to an Offset/Kind pair.
+type RamIndex = Map Hash.Hash (Word32, String)
+
+instance Indexer RamIndex where
+   ixKeys = Map.keys
+   ixOffsets = map fst . Map.elems
+   ixKinds = map snd . Map.elems
+   ixToList = Map.toList
+   ixLookup = Map.lookup
+   ixInsert = Map.insert
+
+putIndex :: Indexer a => Word32 -> a -> Put
+putIndex poolSize idx = do
+   putHeader poolSize
+   forM_ [putTop, putHashes, putOffsets, putKinds] $ \op ->
+      op idx
+
+putHeader :: Word32 -> Put
+putHeader poolSize = do
+   putByteString indexMagic
+   putWord32le 3
+   putWord32le $ poolSize
+
+putTop :: Indexer a => a -> Put
+putTop idx = do
+   mapM_ putWord32le $ makeTop idx
+
+putHashes :: Indexer a => a -> Put
+putHashes idx = do
+   forM_ (ixKeys idx) $ \k -> do
+      putByteString $ Hash.unHash k
+
+putOffsets :: Indexer a => a -> Put
+putOffsets idx = do
+   mapM_ putWord32le $ ixOffsets idx
+
+-- Version 3 writes the kind table directly.
+putKinds :: Indexer a => a -> Put
+putKinds idx = do
+   forM_ (ixKinds idx) $ \knd -> do
+      let packed = cs knd
+      assert (B.length packed == 4) $
+        putByteString packed
+
+-- TODO: Compress the kind table, e.g. version 4
+
+-- The first 256 words of the file give the byte offset of the first
+-- Hash that has a larger byte value.  For example, the first offset
+-- is the index of the first hash that doesn't start with a 0x00 byte.
+-- The 255th (last) will be the total number of entries.
+makeTop :: Indexer a => a -> [Word32]
+makeTop idx = walk 0 [0..255] firsts
+   where
+      firsts = map (Hash.getHashByte 0) $ ixKeys idx
+
+      walk _ [] _ = []
+      walk pos (_:as) [] = pos : walk pos as []
+      walk pos aall@(a:as) ball@(b:bs)
+         | a >= b = walk (pos+1) aall bs
+         | otherwise = pos : walk pos as ball
+
+----------------------------------------------------------------------
+-- Reading the file index.
+
+newtype Hashes = Hashes { unHashes :: B.ByteString }
+newtype Offsets = Offsets { unOffsets :: OffsetInfo }
+newtype Kinds = Kinds { unKinds :: B.ByteString }
+type TopInfo = U.UArray Int Word32
+type OffsetInfo = U.UArray Int Word32
+
+data FileIndex = FileIndex {
+   fiPoolSize :: Word32,
+   fiTop :: TopInfo,
+   fiHashes :: Hashes,
+   fiOffsets :: Offsets,
+   fiKinds :: Kinds }
+
+readIndex :: FilePath -> IO FileIndex
+readIndex path = do
+   payload <- L.readFile path
+   return $! runGet getIndex payload
+
+getIndex :: Get FileIndex
+getIndex = do
+   poolSize <- getHeader
+   top <- getTops
+   let len = fromIntegral $ top U.! 255
+   hashes <- getHashes len
+   ofs <- getOffsets len
+   knd <- getKinds len
+   return $! FileIndex {
+      fiPoolSize = poolSize, fiTop = top,
+      fiHashes = hashes,
+      fiOffsets = ofs,
+      fiKinds = knd }
+
+getHeader :: Get Word32
+getHeader = do
+   magic <- getByteString (B.length indexMagic)
+   unless (magic == indexMagic) $ fail "Invalid magic in file"
+   version <- getWord32le
+   unless (version == 3) $ fail "Unsupported version in file"
+   getWord32le
+
+getTops :: Get TopInfo
+getTops = do
+   items <- replicateM 256 getWord32le
+   return $! U.listArray (0, 255) items
+
+getHashes :: Int -> Get Hashes
+getHashes count = Hashes <$> getByteString (count * 20)
+
+getOffsets :: Int -> Get Offsets
+getOffsets count = do
+   items <- replicateM count getWord32le
+   return $! Offsets $ U.listArray (0, count-1) items
+
+getKinds :: Int -> Get Kinds
+getKinds count = Kinds <$> getByteString (count * 4)
+
+-- Generalized extraction
+extract :: Int -> Int -> B.ByteString -> B.ByteString
+extract itemSpan index =
+   B.take itemSpan . B.drop (itemSpan * index)
+
+fiLength :: FileIndex -> Int
+-- fiLength = (`div` 20) . B.length . unHashes . fiHashes
+fiLength idx = fromIntegral $ (fiTop idx) U.! 255
+
+getTop :: FileIndex -> Int -> Int
+getTop idx i
+   | i < 0     = 0
+   | otherwise = fromIntegral $ (fiTop idx U.! i)
+
+getHash :: FileIndex -> Int -> Hash.Hash
+getHash fi index = Hash.byteStringToHash $ extract 20 index $ unHashes $ fiHashes fi
+
+getOffset :: FileIndex -> Int -> Word32
+getOffset fi index = (unOffsets $ fiOffsets fi) U.! index
+
+getKind :: FileIndex -> Int -> String
+getKind fi index =
+   let bytes = extract 4 index $ unKinds $ fiKinds fi in
+   cs bytes
+
+-- Perform a binary search and return the index if it has been found.
+findHash :: FileIndex -> Hash.Hash -> Maybe Int
+findHash fi key =
+   loop (getTop fi (topByte - 1)) (getTop fi topByte - 1) where
+
+      topByte = fromIntegral $ Hash.getHashByte 0 key
+      loop low high =
+         if low > high
+            then Nothing
+            else
+               let mid = low + ((high - low) `div` 2) in
+               case compare (getHash fi mid) key of
+                  GT -> loop low (mid - 1)
+                  LT -> loop (mid + 1) high
+                  EQ -> Just mid
+
+fileIndexLookup :: FileIndex -> Hash.Hash -> Maybe (Word32, String)
+fileIndexLookup fi key = do
+   pos <- findHash fi key
+   return (getOffset fi pos, getKind fi pos)
+
+fiWalk :: (FileIndex -> Int -> a) -> FileIndex -> [a]
+fiWalk op fi = [op fi x | x <- [0 .. fiLength fi - 1]]
+
+instance Indexer FileIndex where
+   ixKeys = fiWalk getHash
+   ixOffsets = fiWalk getOffset
+   ixKinds = fiWalk getKind
+
+   ixToList = fiWalk (\fi pos -> (getHash fi pos, (getOffset fi pos, getKind fi pos)))
+   ixLookup = flip fileIndexLookup
+   ixInsert = error "Insert not supported for FileIndex"

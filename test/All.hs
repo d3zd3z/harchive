@@ -9,6 +9,7 @@ import HelloCheck
 import LinuxDirCheck
 import ChunkCheck
 import ChunkIOCheck
+import FileIndexCheck
 import HashCheck
 import BinPropCheck
 import HashMapCheck
@@ -25,6 +26,7 @@ tests = (:[]) $ testGroup "HUnit" $ hUnitTestToTests $ test [
       "HashMap" ~: hashMapCheck,
       "HashMapFile" ~: hashMapFileCheck ],
    "Binprop" ~: binPropCheck,
+   "FileIndex" ~: fileIndexCheck,
    "Linux low level" ~: test [
       "Dirs" ~: testLinux ],
    "Chunks" ~: test [
