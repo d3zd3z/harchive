@@ -14,6 +14,7 @@ import HashCheck
 import BinPropCheck
 import HashMapCheck
 import HashMapFileCheck
+import qualified TestJavaProperties
 
 main :: IO ()
 main = defaultMain tests
@@ -21,6 +22,7 @@ main = defaultMain tests
 tests :: [TF.Test]
 tests = (:[]) $ testGroup "HUnit" $ hUnitTestToTests $ test [
    "Simple" ~: testHello,
+   "Java Properties" ~: TestJavaProperties.tester,
    "Hashing" ~: test [
       "Basic" ~: hashCheck,
       "HashMap" ~: hashMapCheck,

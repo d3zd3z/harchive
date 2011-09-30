@@ -94,7 +94,7 @@ basicWords = words
    \island jewel kettle key knee knife knot leaf leg library line lip \
    \lock map match monkey moon mouth muscle nail neck needle nerve net \
    \nose nut office orange oven parcel pen pencil picture pig pin pipe \
-   \plane plate plough/plow pocket pot potato prison pump rail rat \
+   \plane plate plow pocket pot potato prison pump rail rat \
    \receipt ring rod roof root sail school scissors screw seed sheep \
    \shelf ship shirt shoe skin skirt snake sock spade sponge spoon \
    \spring square stamp star station stem stick stocking stomach store \
@@ -104,7 +104,7 @@ basicWords = words
    \black boiling bright broken brown cheap chemical chief clean clear \
    \common complex conscious cut deep dependent early elastic electric \
    \equal fat fertile first fixed flat free frequent full general good \
-   \great grey/gray hanging happy hard healthy high hollow important \
+   \great gray hanging happy hard healthy high hollow important \
    \kind like living long male married material medical military \
    \natural necessary new normal open parallel past physical political \
    \poor possible present private probable quick quiet ready red \

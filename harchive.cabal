@@ -40,7 +40,8 @@ library
                 unix,
                 zlib >= 0.5,
                 convertible-text >= 0.3 && < 0.4,
-                cautious-file >= 1.0 && < 1.1
+                cautious-file >= 1.0 && < 1.1,
+                attoparsec >= 0.9 && < 0.10
         ghc-options: -Wall -Werror
         exposed-modules:
                 Hello
@@ -53,6 +54,7 @@ library
                 System.Backup.HashMap
                 System.Backup.HashMap.File
                 Text.HexDump
+                Text.JavaProperties
         other-modules:
         extra-libraries: crypto
 
