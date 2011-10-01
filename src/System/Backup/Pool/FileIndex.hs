@@ -6,7 +6,7 @@
 -- the contained hashes in that file.
 ----------------------------------------------------------------------
 
-module System.Backup.FileIndex (
+module System.Backup.Pool.FileIndex (
    Indexer(..),
    FileIndex,
    RamIndex,

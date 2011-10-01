@@ -8,7 +8,7 @@ import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Word (Word32)
 import Hash
-import System.Backup.FileIndex
+import System.Backup.Pool.FileIndex
 import Test.HUnit
 import TmpDir
 

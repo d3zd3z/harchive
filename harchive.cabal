@@ -50,9 +50,9 @@ library
                 System.Backup.Chunk
                 System.Backup.Chunk.IO
                 System.Backup.BinProp
-                System.Backup.FileIndex
                 System.Backup.HashMap
                 System.Backup.HashMap.File
+                System.Backup.Pool.FileIndex
                 Text.HexDump
                 Text.JavaProperties
         other-modules:
