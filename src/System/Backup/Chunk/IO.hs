@@ -16,21 +16,22 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Data.Binary.Get
 import Data.Binary.Put
-import Data.Bits ((.&.))
+import Data.Bits (Bits, (.&.))
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as L
+import Data.Word (Word32)
 import System.IO
 
 data ChunkFile = ChunkFile {
    csPath :: String,
-   csWrite :: Chunk -> ChunkIO Int,
+   csWrite :: Chunk -> ChunkIO Word32,
    csHandleState :: MVar HandleState }
 
 data HandleState
    = HClosed
    | HReadable Handle
-   | HWritable Handle Int
+   | HWritable Handle Word32
 
 type ChunkIO = ReaderT String (StateT HandleState IO)
 
@@ -55,20 +56,20 @@ chunkClose cf = runChunkIO cf $ do
 chunkFlush :: ChunkFile -> IO ()
 chunkFlush = flip runChunkIO hsFlush
 
-chunkFileSize :: ChunkFile -> IO Int
+chunkFileSize :: ChunkFile -> IO Word32
 chunkFileSize = flip runChunkIO hsFileSize
 
-chunkRead :: ChunkFile -> Int -> IO (Chunk, Int)
+chunkRead :: ChunkFile -> Word32 -> IO (Chunk, Word32)
 chunkRead cf = runChunkIO cf . hsReadChunk
 
-chunkRead_ :: ChunkFile -> Int -> IO Chunk
+chunkRead_ :: ChunkFile -> Word32 -> IO Chunk
 chunkRead_ cf = fmap fst . chunkRead cf
 
-chunkWrite :: ChunkFile -> Chunk -> IO Int
+chunkWrite :: ChunkFile -> Chunk -> IO Word32
 chunkWrite cf@(ChunkFile { csWrite = writer }) =
    runChunkIO cf . writer
 
-makeWriter :: IOMode -> (Chunk -> ChunkIO Int)
+makeWriter :: IOMode -> (Chunk -> ChunkIO Word32)
 makeWriter ReadMode = \_ -> error "Attempt to write to ReadOnly Chunk file"
 makeWriter AppendMode = hsWriteChunk
 makeWriter mode = error $ "Invalid open mode for ChunkFile: " ++ show mode
@@ -78,7 +79,7 @@ makeWriter mode = error $ "Invalid open mode for ChunkFile: " ++ show mode
 
 -- Read the chunk at the given offset, returning the chunk itself,
 -- plus a guess as to where the next chunk should be.
-hsReadChunk :: Int -> ChunkIO (Chunk, Int)
+hsReadChunk :: Word32 -> ChunkIO (Chunk, Word32)
 hsReadChunk pos = do
    fd <- getReadable
    liftIO $ hSeek fd AbsoluteSeek (fromIntegral pos)
@@ -87,7 +88,7 @@ hsReadChunk pos = do
    (chunk, len) <- liftIO $ runGet (getPayload fd) $ L.fromChunks [rawHeader]
    return (chunk, pos + 48 + len + padLen 16 len)
 
-hsWriteChunk :: Chunk -> ChunkIO (Int)
+hsWriteChunk :: Chunk -> ChunkIO (Word32)
 hsWriteChunk chunk = do
    (fd, oldPos) <- getWritable
    let item = runPut (putChunk chunk)
@@ -98,13 +99,13 @@ hsWriteChunk chunk = do
 
 -- Compute the number of bytes needed to pad 'value' to a 'padding'
 -- boundary.  Formula from Hacker's Delight.
-padLen :: Int -> Int -> Int
+padLen :: Bits a => a -> a -> a
 padLen padding value = (-value) .&. (padding - 1)
 
 ----------------------------------------------------------------------
 -- Parse the header, and return an IO able to parse the entire rest of
 -- the header as well.
-getPayload :: Handle -> Get (IO (Chunk, Int))
+getPayload :: Handle -> Get (IO (Chunk, Word32))
 getPayload fd = do
    goodMagic <- checkMagic
    if goodMagic then getRest
@@ -169,7 +170,7 @@ getReadable =
       makeOpen (HWritable fd _) = liftIO (hClose fd) >> makeOpen HClosed
 
 -- Get a writable handle, as well as the current write offset.
-getWritable :: ChunkIO (Handle, Int)
+getWritable :: ChunkIO (Handle, Word32)
 getWritable = get >>= makeOpen
    where
       makeOpen HClosed = do
@@ -200,7 +201,7 @@ hsClose = do
       doClose _ = return ()
 
 -- Determine the file size.
-hsFileSize :: ChunkIO Int
+hsFileSize :: ChunkIO Word32
 hsFileSize = get >>= doSize
    where
       doSize (HReadable fd) = fmap fromIntegral $ liftIO $ hFileSize fd
@@ -215,7 +216,7 @@ hsFileSize = get >>= doSize
             hClose fd
             return $ fromIntegral size
 
-updatePos :: Int -> ChunkIO ()
+updatePos :: Word32 -> ChunkIO ()
 updatePos size = get >>= doUpdate
    where
       doUpdate (HWritable fd pos) = put $ HWritable fd (pos + size)
