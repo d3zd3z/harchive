@@ -4,7 +4,8 @@
 module Text.JavaProperties (
    JavaProperties,
    readPropertyFile,
-   writePropertyFile
+   writePropertyFile,
+   emptyProperties
 ) where
 
 -- I haven't found an actual spec for the flat format that Java uses
@@ -26,6 +27,9 @@ import System.Locale (defaultTimeLocale)
 import qualified System.IO.Cautious as Cautious
 
 type JavaProperties = Map String String
+
+emptyProperties :: JavaProperties
+emptyProperties = Map.empty
 
 readPropertyFile :: FilePath -> IO JavaProperties
 readPropertyFile path = do
