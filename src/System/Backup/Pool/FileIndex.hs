@@ -10,6 +10,7 @@ module System.Backup.Pool.FileIndex (
    Indexer(..),
    FileIndex,
    RamIndex,
+   emptyIndex,
    PackedIndex,
    writeIndex,
    readIndex
@@ -66,6 +67,11 @@ writeIndex path poolSize idx = do
 -- As the data is built up, values are placed in a RAM index first.
 -- This is just a simple map from hashes to an Offset/Kind pair.
 type RamIndex = Map Hash.Hash (Word32, String)
+
+emptyIndex :: FileIndex
+emptyIndex = FileIndex {
+   fiPacked = emptyPackedIndex,
+   fiRam = Map.empty }
 
 instance Indexer RamIndex where
    ixKeys = Map.keys
@@ -140,6 +146,14 @@ data PackedIndex = PackedIndex {
    piHashes :: Hashes,
    piOffsets :: Offsets,
    piKinds :: Kinds }
+
+emptyPackedIndex :: PackedIndex
+emptyPackedIndex = PackedIndex {
+   piPoolSize = 0,
+   piTop = U.listArray (0, 255) $ replicate 256 0,
+   piHashes = Hashes B.empty,
+   piOffsets = Offsets $ U.listArray (0, -1) [],
+   piKinds = Kinds B.empty }
 
 readPackedIndex :: FilePath -> IO (PackedIndex, Word32)
 readPackedIndex path = do
