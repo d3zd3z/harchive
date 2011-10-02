@@ -144,7 +144,6 @@ type TopInfo = U.UArray Int Word32
 type OffsetInfo = U.UArray Int Word32
 
 data PackedIndex = PackedIndex {
-   piPoolSize :: Word32,
    piTop :: TopInfo,
    piHashes :: Hashes,
    piOffsets :: Offsets,
@@ -152,7 +151,6 @@ data PackedIndex = PackedIndex {
 
 emptyPackedIndex :: PackedIndex
 emptyPackedIndex = PackedIndex {
-   piPoolSize = 0,
    piTop = U.listArray (0, 255) $ replicate 256 0,
    piHashes = Hashes B.empty,
    piOffsets = Offsets $ U.listArray (0, -1) [],
@@ -172,7 +170,7 @@ getIndex = do
    ofs <- getOffsets len
    knd <- getKinds len
    return $! (PackedIndex {
-      piPoolSize = poolSize, piTop = top,
+      piTop = top,
       piHashes = hashes,
       piOffsets = ofs,
       piKinds = knd }, poolSize)
