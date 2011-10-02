@@ -51,12 +51,15 @@ class Indexer a where
    ixLookup :: Hash.Hash -> a -> Maybe (Word32, String)
    ixInsert :: Hash.Hash -> (Word32, String) -> a -> a
 
+-- Merge the two pools.  Priority is given to the first if there are
+-- duplicates.
 ixMerge :: Indexer a => Indexer b => a -> b -> [(Hash.Hash, (Word32, String))]
 ixMerge left right = merge (ixToList left) (ixToList right) where
    merge a [] = a
    merge [] b = b
    merge aall@(a@(akey, _):as) ball@(b@(bkey, _):bs)
       | akey < bkey = a : merge as ball
+      | akey == bkey = a : merge as bs
       | otherwise   = b : merge aall bs
 
 writeIndex :: Indexer a => FilePath -> Word32 -> a -> IO ()
