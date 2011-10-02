@@ -141,12 +141,12 @@ data PackedIndex = PackedIndex {
    piOffsets :: Offsets,
    piKinds :: Kinds }
 
-readPackedIndex :: FilePath -> IO PackedIndex
+readPackedIndex :: FilePath -> IO (PackedIndex, Word32)
 readPackedIndex path = do
    payload <- L.readFile path
    return $! runGet getIndex payload
 
-getIndex :: Get PackedIndex
+getIndex :: Get (PackedIndex, Word32)
 getIndex = do
    poolSize <- getHeader
    top <- getTops
@@ -154,11 +154,11 @@ getIndex = do
    hashes <- getHashes len
    ofs <- getOffsets len
    knd <- getKinds len
-   return $! PackedIndex {
+   return $! (PackedIndex {
       piPoolSize = poolSize, piTop = top,
       piHashes = hashes,
       piOffsets = ofs,
-      piKinds = knd }
+      piKinds = knd }, poolSize)
 
 getHeader :: Get Word32
 getHeader = do
@@ -250,10 +250,10 @@ data FileIndex = FileIndex {
    fiPacked :: PackedIndex,
    fiRam    :: RamIndex }
 
-readIndex :: FilePath -> IO FileIndex
+readIndex :: FilePath -> IO (FileIndex, Word32)
 readIndex path = do
-   packed <- readPackedIndex path
-   return $ FileIndex { fiPacked = packed, fiRam = Map.empty }
+   (packed, poolSize) <- readPackedIndex path
+   return $ (FileIndex { fiPacked = packed, fiRam = Map.empty }, poolSize)
 
 instance Indexer FileIndex where
    ixKeys = map (\ (k, _) -> k) . ixToList

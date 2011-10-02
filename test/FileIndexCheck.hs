@@ -38,7 +38,8 @@ ioTest = do
    let name = dir ++ "/file1.idx"
    let base = randomRamMap 100000
    writeIndex name 42 base
-   ix2 <- readIndex name
+   (ix2, psize) <- readIndex name
+   psize @=? 42
    checkIndexer ix2 (ixToList base) @=? []
 
 rewriteTest :: IO ()
@@ -47,18 +48,21 @@ rewriteTest = do
    let name = dir ++ "/file2.idx"
    let (part1, part2) = List.splitAt 50000 $ Map.toList $ randomRamMap 100000
    writeIndex name 50 (Map.fromList part1)
-   ix1 <- readIndex name
+   (ix1, psize1) <- readIndex name
+   psize1 @=? 50
    checkIndexer ix1 part1 @=? []
 
    -- Rewrite with no changes.
    writeIndex name 50 ix1
-   ix1' <- readIndex name
+   (ix1', psize1') <- readIndex name
+   psize1' @=? 50
    checkIndexer ix1' part1 @=? []
 
    -- Add in part2.
    let i2src = List.foldl' update ix1' part2
    writeIndex name 100 i2src
-   ix2 <- readIndex name
+   (ix2, psize2) <- readIndex name
+   psize2 @=? 100
    checkIndexer ix2 (part1 ++ part2) @=? []
    where
       update idx (k, v) = ixInsert k v idx
