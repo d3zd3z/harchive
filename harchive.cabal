@@ -34,6 +34,7 @@ library
                 containers,
                 directory >= 1.0,
                 filepath >= 1.1,
+                hslogger >= 1.1 && < 1.2,
                 mtl >= 1.0,
                 old-locale,
                 time,
@@ -49,10 +50,13 @@ library
                 System.Linux.Directory
                 System.Backup.Chunk
                 System.Backup.Chunk.IO
+                System.Backup.Chunk.Store
                 System.Backup.BinProp
                 System.Backup.HashMap
                 System.Backup.HashMap.File
+                System.Backup.Pool
                 System.Backup.Pool.FileIndex
+                System.Backup.Pool.Metadata
                 Text.HexDump
                 Text.JavaProperties
         other-modules:

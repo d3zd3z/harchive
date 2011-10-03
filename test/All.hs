@@ -15,6 +15,7 @@ import BinPropCheck
 import HashMapCheck
 import HashMapFileCheck
 import qualified TestJavaProperties
+import qualified PoolCheck
 
 main :: IO ()
 main = defaultMain tests
@@ -33,7 +34,8 @@ tests = (:[]) $ testGroup "HUnit" $ hUnitTestToTests $ test [
       "Dirs" ~: testLinux ],
    "Chunks" ~: test [
       "Basic" ~: testChunk,
-      "IO" ~: testChunkIO ]
+      "IO" ~: testChunkIO ],
+   "Pool" ~: PoolCheck.tester
    ]
 {-
    testGroup "Simple" $ hUnitTestToTests testHello,

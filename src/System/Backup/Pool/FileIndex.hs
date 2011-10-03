@@ -13,7 +13,9 @@ module System.Backup.Pool.FileIndex (
    emptyIndex,
    PackedIndex,
    writeIndex,
-   readIndex
+   readIndex,
+
+   isIndexDirty
 ) where
 
 import Control.Applicative ((<$>))
@@ -278,3 +280,6 @@ instance Indexer FileIndex where
    ixToList fi = ixMerge (fiRam fi) (fiPacked fi)
    ixLookup key idx = ixLookup key (fiRam idx) `mplus` ixLookup key (fiPacked idx)
    ixInsert k v idx = idx { fiRam = ixInsert k v (fiRam idx) }
+
+isIndexDirty :: FileIndex -> Bool
+isIndexDirty idx = (fiRam idx) /= Map.empty
