@@ -12,6 +12,7 @@ import qualified Hash
 import System.Backup.Chunk
 
 import Control.Concurrent
+import Control.Exception (tryJust)
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Binary.Get
@@ -22,6 +23,7 @@ import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as L
 import Data.Word (Word32)
 import System.IO
+import System.IO.Error (isDoesNotExistError)
 
 data ChunkFile = ChunkFile {
    csPath :: String,
@@ -211,10 +213,15 @@ hsFileSize = get >>= doSize
          -- and close it.
          path <- ask
          liftIO $ do
-            fd <- openBinaryFile path ReadMode
-            size <- hFileSize fd
-            hClose fd
-            return $ fromIntegral size
+            r <- tryJust (guard . isDoesNotExistError) $ getSize path
+            return $ case r of
+               Left _ -> 0
+               Right sz -> sz
+
+      getSize :: FilePath -> IO Word32
+      getSize path = do
+         withBinaryFile path ReadMode $ \fd -> do
+            fromIntegral `fmap` hFileSize fd
 
 updatePos :: Word32 -> ChunkIO ()
 updatePos size = get >>= doUpdate

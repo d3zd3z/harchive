@@ -17,7 +17,12 @@ import TmpDir
 import GenWords
 
 testChunkIO :: Test
-testChunkIO = test $ withTmpDir $ \tmp -> do
+testChunkIO = test [
+   "Read/Write" ~: basic,
+   "Empty size" ~: testEmpty ]
+
+basic :: IO ()
+basic = withTmpDir $ \tmp -> do
    let sizes = [100,200..5000] ++ [32*1024, 64*1024 .. 256*1024]
    withChunkFile (tmp </> "data.dat") AppendMode $ \cf -> do
       forM_ sizes $ \i ->
@@ -35,6 +40,16 @@ testChunkIO = test $ withTmpDir $ \tmp -> do
           iter pos _ = error $ printf "Iteration error: pos=%d, size=%d" pos size
       iter 0 sizes
    return ()
+
+-- Validate that we get a size of zero back from an non-existant chunk
+-- file.
+testEmpty :: IO ()
+testEmpty = do
+   withTmpDir $ \tmp -> do
+   let name = tmp </> "empty.data"
+   withChunkFile name AppendMode $ \cf -> do
+      size <- chunkFileSize cf
+      size @?= 0
 
 withChunkFile :: FilePath -> IOMode -> (ChunkFile -> IO a) -> IO a
 withChunkFile path mode =
