@@ -11,24 +11,23 @@ module System.Backup.Pool (
 
 import Control.Applicative ((<$>))
 import Control.Concurrent (MVar, newMVar, modifyMVar_, withMVar)
-import Control.Exception ({- finally, -} tryJust)
+import Control.Exception (tryJust)
 import Control.Monad (ap, guard, when)
 import Data.Char (isDigit)
 import Data.IORef
-import Data.Word (Word32)
 import Data.Maybe (catMaybes, listToMaybe, maybeToList)
+import Data.Word (Word32)
 import Hash
 import System.Backup.Chunk
-import qualified System.Backup.Chunk.Store as Store
 import System.Backup.Chunk.IO
 import System.Backup.Pool.FileIndex
 import System.Backup.Pool.Metadata
 import System.Directory
-import System.FilePath -- ((</>))
--- import System.IO (fixIO, SeekMode(..))
+import System.FilePath ((</>))
 import System.IO.Error (isDoesNotExistError)
-import qualified System.Log.Logger as Log
 import Text.Printf (printf)
+import qualified System.Backup.Chunk.Store as Store
+import qualified System.Log.Logger as Log
 
 newtype Pool = Pool { unPool :: MVar PoolState }
 
