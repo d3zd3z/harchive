@@ -18,6 +18,9 @@ class ChunkSource a where
    -- present.
    lookup :: Hash.Hash -> a -> IO (Maybe Chunk)
 
+   -- Get a list of backup chunks.
+   getBackups :: a -> IO [Hash.Hash]
+
 -- A ChunkStore is something that can also have chunks added to it.
 class ChunkSource a => ChunkStore a where
 

@@ -7,13 +7,14 @@ module System.Backup.Pool (
 ) where
 
 import Control.Applicative ((<$>))
-import Control.Concurrent (MVar, newMVar, modifyMVar_)
+import Control.Concurrent (MVar, newMVar, modifyMVar_, withMVar)
 import Control.Exception ({- finally, -} tryJust)
 import Control.Monad (ap, guard, when)
 import Data.Char (isDigit)
 import Data.IORef
 import Data.Word (Word32)
 import Data.Maybe (catMaybes {- , listToMaybe, maybeToList -})
+import Hash
 import System.Backup.Chunk
 import qualified System.Backup.Chunk.Store as Store
 import System.Backup.Chunk.IO
@@ -43,6 +44,9 @@ closePool p = do
 instance Store.ChunkSource Pool where
 
    lookup = undefined
+   getBackups p = do
+      withMVar (unPool p) $ \pool -> do
+         safeGetBackups $ (pfBase pool) </> "metadata" </> "backups.txt"
 
 instance Store.ChunkStore Pool where
 
@@ -128,6 +132,16 @@ safeReadIndex name = do
 
 ----------------------------------------------------------------------
 
+-- Safely read the list of backups.
+safeGetBackups :: FilePath -> IO [Hash.Hash]
+safeGetBackups name = do
+   r <- tryJust (guard . isDoesNotExistError) $ getBackups name
+   return $ case r of
+      Left () -> []
+      Right backs -> backs
+
+----------------------------------------------------------------------
+
 -- Lookup the given hash in the pool, returning the Chunk if it was
 -- found.
 {-
@@ -172,6 +186,7 @@ makePoolState base = do
    case valid of
       Left msg -> ioError $ userError msg
       Right pfiles -> do
+         createDirectoryIfMissing False $ base </> "metadata"
          props <- safeGetProps base
          files <- mapM (makeFileState base) pfiles >>= newIORef
          written <- newIORef False
