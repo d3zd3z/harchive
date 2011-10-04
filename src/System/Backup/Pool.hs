@@ -13,7 +13,7 @@ import Control.Monad (ap, guard, when)
 import Data.Char (isDigit)
 import Data.IORef
 import Data.Word (Word32)
-import Data.Maybe (catMaybes {- , listToMaybe, maybeToList -})
+import Data.Maybe (catMaybes, listToMaybe, maybeToList)
 import Hash
 import System.Backup.Chunk
 import qualified System.Backup.Chunk.Store as Store
@@ -34,6 +34,9 @@ openPool path = do
    p <- makePoolState path
    return Pool `ap` newMVar p
 
+withPool :: Pool -> (PoolState -> IO a) -> IO a
+withPool p op = withMVar (unPool p) op
+
 closePool :: Pool -> IO ()
 closePool p = do
    modifyMVar_ (unPool p) $ \pool -> do
@@ -43,15 +46,19 @@ closePool p = do
 
 instance Store.ChunkSource Pool where
 
-   lookup = undefined
+   lookup key p = withPool p $ poolLookup key
    getBackups p = do
-      withMVar (unPool p) $ \pool -> do
+      withPool p $ \pool -> do
          safeGetBackups $ (pfBase pool) </> "metadata" </> "backups.txt"
 
 instance Store.ChunkStore Pool where
 
-   flush = undefined
-   insert = undefined
+   flush p = withPool p $ \pool -> do
+      files <- readIORef $ pfFiles pool
+      mapM_ flushFileState files
+
+   insert p chunk = do
+      withPool p $ \pool -> insertPool pool chunk
 
 data PoolState = PoolState {
    pfBase :: FilePath,
@@ -81,7 +88,7 @@ data FileState = FileState {
 -- necessary.
 makeFileState :: FilePath -> Int -> IO FileState
 makeFileState base num = do
-   file <- openChunkFile (makePoolFile base num) ReadWriteMode
+   file <- openChunkFile (makePoolFile base num) AppendMode
    let indexName = makePoolIndex base num
    (index, ilen) <- safeReadIndex indexName
    cSize <- chunkFileSize file
@@ -92,13 +99,18 @@ makeFileState base num = do
 -- Close the given file state.
 closeFileState :: FileState -> IO ()
 closeFileState fs = do
+   flushFileState fs
+   chunkClose (fsFile fs)
+
+-- Flush the given file state.
+flushFileState :: FileState -> IO ()
+flushFileState fs = do
    let idx = fsIndex fs
    let cfile = fsFile fs
    when (isIndexDirty idx) $ do
       size <- chunkFileSize cfile
       let name = makePoolIndex (fsBase fs) (fsNumber fs)
       writeIndex name size idx
-   chunkClose cfile
 
 -- Given a (possibly empty) partial index for the pool file, add the
 -- rest of the file's data to the index, update the index file, and
@@ -144,7 +156,6 @@ safeGetBackups name = do
 
 -- Lookup the given hash in the pool, returning the Chunk if it was
 -- found.
-{-
 poolLookup :: Hash.Hash -> PoolState -> IO (Maybe Chunk)
 poolLookup key ps = do
    files <- readIORef $ pfFiles ps
@@ -159,12 +170,32 @@ poolLookup key ps = do
       lookEntry fs = do
          (pos, _) <- ixLookup key $ fsIndex fs
          return $ (fs, pos)
--}
 
 ----------------------------------------------------------------------
 
+insertPool :: PoolState -> Chunk -> IO ()
+insertPool ps chunk = do
+   ensureRoom ps (chunkLength chunk)
+   (f:fs) <- readIORef (pfFiles ps)
+   pos <- chunkWrite (fsFile f) chunk
+   let ni = ixInsert (chunkHash chunk) (pos, chunkKind chunk) (fsIndex f)
+   writeIORef (pfFiles ps) (f { fsIndex = ni } : fs)
+
+-- Ensure there is room in the head chunk for this pool.
+ensureRoom :: PoolState -> Int -> IO ()
+ensureRoom ps size = do
+   fs <- readIORef $ pfFiles ps
+   case fs of
+      [] -> makeNewPoolFile ps
+      (f:_) -> do
+         curSize <- chunkFileSize $ fsFile f
+         let limit = pfLimit ps
+         written <- readIORef $ pfWritten ps
+         when ((pfNewFile ps && not written) || (curSize + fromIntegral size > limit)) $ do
+            makeNewPoolFile ps
+   writeIORef (pfWritten ps) True
+
 -- Make a new pool file.
-{-
 makeNewPoolFile :: PoolState -> IO ()
 makeNewPoolFile ps = do
    files <- readIORef $ pfFiles ps
@@ -174,7 +205,6 @@ makeNewPoolFile ps = do
    where
       newNum [] = 0
       newNum (FileState { fsNumber = n }:_) = n + 1
--}
 
 ----------------------------------------------------------------------
 

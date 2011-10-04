@@ -29,7 +29,7 @@ class ChunkSource a => ChunkStore a where
 
    -- Add a new chunk to this store.  The chunk should not already be
    -- present.
-   insert :: Hash.Hash -> Chunk -> a -> IO ()
+   insert :: a -> Chunk -> IO ()
 
 -- Handy Rank2 store to avoid littering the code with Rank2Types.
 newtype Store = Store {
