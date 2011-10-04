@@ -3,7 +3,10 @@
 module System.Backup.Pool (
    Pool,
    openPool,
-   closePool
+   closePool,
+
+   -- For tests.
+   decodePoolName
 ) where
 
 import Control.Applicative ((<$>))

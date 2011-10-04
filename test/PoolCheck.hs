@@ -8,7 +8,7 @@ import Errors
 import GenWords
 import Test.HUnit
 import TmpDir
-import System.Directory (createDirectory)
+import System.Directory (createDirectory, getDirectoryContents)
 import System.FilePath ((</>))
 
 import System.Backup.Chunk
@@ -20,7 +20,8 @@ import System.Backup.Pool
 tester :: Test
 tester = test [
    "Creation" ~: noPool,
-   "Read/Write" ~: readWrite ]
+   "Read/Write" ~: readWrite,
+   "New Files" ~: newFiles ]
 
 -- Verify that various problems with creating pools are handled.
 noPool :: IO ()
@@ -50,6 +51,36 @@ readWrite = withTmpDir $ \tmp -> do
 
    withPool tmp $ \pool -> do
       verifyPool pool fullItems
+
+-- Verify that newfiles get written when requested.
+newFiles :: IO ()
+newFiles = withTmpDir $ \tmp -> do
+   let chunkA = makeChunk 1 256
+
+   withPool tmp $ \pool -> Store.insert pool chunkA
+   dA <- getDataFiles tmp
+   dA @=? [0]
+
+   let chunkB = makeChunk 1 256
+   withPool tmp $ \pool -> Store.insert pool chunkB
+   dB <- getDataFiles tmp
+   dB @=? [0]
+
+   appendFile (tmp </> "metadata" </> "props.txt") "newfile=true\n"
+
+   let chunkC = makeChunk 1 256
+   let chunkD = makeChunk 1 256
+   withPool tmp $ \pool -> do
+      Store.insert pool chunkC
+      Store.insert pool chunkD
+   dC <- getDataFiles tmp
+   dC @=? [0, 1]
+
+-- Get the numbers of the pool files in a directory.
+getDataFiles :: FilePath -> IO [Int]
+getDataFiles dir = do
+   names <- getDirectoryContents dir
+   return $ sort $ catMaybes $ map decodePoolName names
 
 -- TODO: Test writing backups.
 
@@ -89,4 +120,6 @@ nSizes n = take n $ sizes ++ repeat 4096
 
 makeChunks :: Int -> [Chunk]
 makeChunks n = zipWith makeChunk [1..] (nSizes n)
-   where makeChunk index len = stringToChunk "blob" $ makeString index len
+
+makeChunk :: Int -> Int -> Chunk
+makeChunk index len = stringToChunk "blob" $ makeString index len
