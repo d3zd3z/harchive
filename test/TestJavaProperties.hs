@@ -1,16 +1,19 @@
 module TestJavaProperties (tester) where
 
+import Data.ByteString (ByteString)
 import Data.Char (isLetter)
 import qualified Data.Map as Map
 import GenWords
 import Test.HUnit
 import Text.JavaProperties
+import Text.JavaProperties.XML
 import TmpDir
 import System.FilePath ((</>))
 
 tester :: Test
 tester = test [
-   "Write and read-back properties" ~: propTest ]
+   "Write and read-back properties" ~: propTest,
+   "XML translation" ~: xmlTest ]
 
 propTest :: IO ()
 propTest = do
@@ -20,6 +23,31 @@ propTest = do
    writePropertyFile name p1
    p2 <- readPropertyFile name
    (p1 == p2) @? "Property reread mismatch"
+
+xmlTest :: IO ()
+xmlTest = do
+   m1 <- xmlToJavaProperties sample
+   let mOrig = Map.fromList [
+         ("_date", "1317421304162"),
+         ("key", "value"),
+         ("kind", "snapshot"),
+         ("hash", "cb32d5ed1eb8ec56f7157b0b7fac4b656c8e62cc") ]
+   m1 @?= mOrig
+   buf <- javaPropertiesToXml mOrig :: IO ByteString
+   m2 <- xmlToJavaProperties buf
+   m2 @?= mOrig
+
+-- This is captured out of the output of the Scala implementation.
+sample :: String
+sample = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n\
+   \<!DOCTYPE properties SYSTEM \"http://java.sun.com/dtd/properties.dtd\">\n\
+   \<properties>\n\
+   \<comment>Backup</comment>\n\
+   \<entry key=\"_date\">1317421304162</entry>\n\
+   \<entry key=\"key\">value</entry>\n\
+   \<entry key=\"kind\">snapshot</entry>\n\
+   \<entry key=\"hash\">cb32d5ed1eb8ec56f7157b0b7fac4b656c8e62cc</entry>\n\
+   \</properties>\n"
 
 -- TODO: Test for, and support non-simple characters.
 
