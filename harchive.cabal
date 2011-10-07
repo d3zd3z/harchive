@@ -61,6 +61,7 @@ library
                 Text.HexDump
                 Text.Properties
                 Text.Properties.JavaXml
+                Text.Properties.Node
         other-modules:
         extra-libraries: crypto
 

@@ -1,4 +1,4 @@
-module TestJavaProperties (tester) where
+module PropertiesCheck (tester) where
 
 import Data.ByteString (ByteString)
 import Data.Char (isLetter)
@@ -7,13 +7,15 @@ import GenWords
 import Test.HUnit
 import Text.Properties
 import Text.Properties.JavaXml
+import Text.Properties.Node
 import TmpDir
 import System.FilePath ((</>))
 
 tester :: Test
 tester = test [
    "Write and read-back properties" ~: propTest,
-   "XML translation" ~: xmlTest ]
+   "XML translation" ~: xmlTest,
+   "Node translation" ~: nodeTest ]
 
 propTest :: IO ()
 propTest = do
@@ -27,15 +29,25 @@ propTest = do
 xmlTest :: IO ()
 xmlTest = do
    m1 <- javaXmlToProperties sample
-   let mOrig = Map.fromList [
-         ("_date", "1317421304162"),
-         ("key", "value"),
-         ("kind", "snapshot"),
-         ("hash", "cb32d5ed1eb8ec56f7157b0b7fac4b656c8e62cc") ]
+   let mOrig = simpleProp
    m1 @?= mOrig
    buf <- propertiesToJavaXml mOrig :: IO ByteString
    m2 <- javaXmlToProperties buf
    m2 @?= mOrig
+
+simpleProp :: Properties
+simpleProp = Map.fromList [
+      ("_date", "1317421304162"),
+      ("key", "value"),
+      ("kind", "snapshot"),
+      ("hash", "cb32d5ed1eb8ec56f7157b0b7fac4b656c8e62cc") ]
+
+nodeTest :: IO ()
+nodeTest = do
+   let p0 = (Map.insert "_kind" "simple" simpleProp)
+   n1 <- propertiesToNode p0 :: IO ByteString
+   p1 <- nodeToProperties n1
+   p1 @?= p0
 
 -- This is captured out of the output of the Scala implementation.
 sample :: String

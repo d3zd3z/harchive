@@ -1,6 +1,10 @@
 {-# LANGUAGE Arrows #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Text.Properties.JavaXml where
+
+module Text.Properties.JavaXml (
+   javaXmlToProperties,
+   propertiesToJavaXml
+) where
 
 -- TODO: Figure out how to parse the XML without having to strip off
 -- the DOCTYPE.
