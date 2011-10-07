@@ -5,7 +5,10 @@ module Text.Properties (
    Properties,
    readPropertyFile,
    writePropertyFile,
-   emptyProperties
+   emptyProperties,
+
+   module Text.Properties.JavaXml,
+   module Text.Properties.Node
 ) where
 
 -- I haven't found an actual spec for the flat format that Java uses
@@ -14,22 +17,20 @@ module Text.Properties (
 
 import Prelude hiding (takeWhile)
 
+import Text.Properties.Types
+import Text.Properties.JavaXml
+import Text.Properties.Node
+
 import Control.Applicative hiding (many)
 import Data.Attoparsec.Lazy ()
 import Data.Attoparsec.Char8
 import qualified Data.Attoparsec as AP
 import qualified Data.ByteString as B
 import Data.Convertible.Text (cs)
-import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Time (formatTime, getZonedTime)
 import System.Locale (defaultTimeLocale)
 import qualified System.IO.Cautious as Cautious
-
-type Properties = Map String String
-
-emptyProperties :: Properties
-emptyProperties = Map.empty
 
 readPropertyFile :: FilePath -> IO Properties
 readPropertyFile path = do

@@ -6,8 +6,6 @@ import qualified Data.Map as Map
 import GenWords
 import Test.HUnit
 import Text.Properties
-import Text.Properties.JavaXml
-import Text.Properties.Node
 import TmpDir
 import System.FilePath ((</>))
 

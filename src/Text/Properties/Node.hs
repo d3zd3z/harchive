@@ -3,7 +3,7 @@
 
 module Text.Properties.Node where
 
-import Text.Properties (Properties)
+import Text.Properties.Types
 import Data.Convertible.Text (ConvertSuccess, cs)
 import qualified Data.Map as Map
 import Text.XML.HXT.Core

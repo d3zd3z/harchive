@@ -11,7 +11,7 @@ module Text.Properties.JavaXml (
 -- TODO: Maybe, figure out how to insert convenient newlines in
 -- document (indentDoc in HXT is a good start).
 
-import Text.Properties (Properties)
+import Text.Properties.Types
 import Data.Convertible.Text (ConvertSuccess, cs)
 import Data.List (isPrefixOf)
 import qualified Data.Map as Map

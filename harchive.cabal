@@ -60,9 +60,10 @@ library
                 System.Backup.Pool.Metadata
                 Text.HexDump
                 Text.Properties
+        other-modules:
                 Text.Properties.JavaXml
                 Text.Properties.Node
-        other-modules:
+                Text.Properties.Types
         extra-libraries: crypto
 
 executable run-tests
