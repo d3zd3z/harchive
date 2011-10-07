@@ -59,8 +59,8 @@ library
                 System.Backup.Pool.FileIndex
                 System.Backup.Pool.Metadata
                 Text.HexDump
-                Text.JavaProperties
-                Text.JavaProperties.XML
+                Text.Properties
+                Text.Properties.JavaXml
         other-modules:
         extra-libraries: crypto
 

@@ -1,13 +1,13 @@
 {-# LANGUAGE Arrows #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Text.JavaProperties.XML where
+module Text.Properties.JavaXml where
 
 -- TODO: Figure out how to parse the XML without having to strip off
 -- the DOCTYPE.
 -- TODO: Maybe, figure out how to insert convenient newlines in
 -- document (indentDoc in HXT is a good start).
 
-import Text.JavaProperties (JavaProperties)
+import Text.Properties (Properties)
 import Data.Convertible.Text (ConvertSuccess, cs)
 import Data.List (isPrefixOf)
 import qualified Data.Map as Map
@@ -15,15 +15,15 @@ import Text.XML.HXT.Core
 
 -- This has to run in IO because the XML parsing may need external
 -- references (even though we try to keep that from happening).
-xmlToJavaProperties :: ConvertSuccess a String => a -> IO JavaProperties
-xmlToJavaProperties inp = do
+javaXmlToProperties :: ConvertSuccess a String => a -> IO Properties
+javaXmlToProperties inp = do
    let body = removePrefix $ cs inp
    -- let body = cs inp
    items <- runX $ constA body >>> decoder
    return $ Map.fromList items
 
-javaPropertiesToXml :: ConvertSuccess String a => JavaProperties -> IO a
-javaPropertiesToXml props = do
+propertiesToJavaXml :: ConvertSuccess String a => Properties -> IO a
+propertiesToJavaXml props = do
    text <- runX (encoder $ Map.toList props)
    return $ cs $ header ++ concat text
 

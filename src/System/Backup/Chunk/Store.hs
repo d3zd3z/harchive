@@ -33,4 +33,4 @@ class ChunkSource a => ChunkStore a where
 
 -- Handy Rank2 store to avoid littering the code with Rank2Types.
 newtype Store = Store {
-   pool :: ChunkStore a => a }
+   unStore :: ChunkStore a => a }

@@ -1,8 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- Parser for Java Properties files.
 
-module Text.JavaProperties (
-   JavaProperties,
+module Text.Properties (
+   Properties,
    readPropertyFile,
    writePropertyFile,
    emptyProperties
@@ -26,12 +26,12 @@ import Data.Time (formatTime, getZonedTime)
 import System.Locale (defaultTimeLocale)
 import qualified System.IO.Cautious as Cautious
 
-type JavaProperties = Map String String
+type Properties = Map String String
 
-emptyProperties :: JavaProperties
+emptyProperties :: Properties
 emptyProperties = Map.empty
 
-readPropertyFile :: FilePath -> IO JavaProperties
+readPropertyFile :: FilePath -> IO Properties
 readPropertyFile path = do
    text <- B.readFile path
    let p = fullParse pProperties text
@@ -39,7 +39,7 @@ readPropertyFile path = do
       Left msg -> error msg
       Right r -> return $ Map.fromList r
 
-writePropertyFile :: FilePath -> JavaProperties -> IO ()
+writePropertyFile :: FilePath -> Properties -> IO ()
 writePropertyFile path props = do
    now <- getZonedTime
    let stamp = formatTime defaultTimeLocale "%c" now

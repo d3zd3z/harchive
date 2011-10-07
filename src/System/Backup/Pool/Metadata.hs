@@ -19,10 +19,10 @@ import Control.Applicative ((<$>))
 import Data.Word (Word32)
 import qualified Hash
 import qualified Data.Map as Map
-import Text.JavaProperties
+import Text.Properties
 import System.IO.Cautious as Cautious
 
-type Metadata = JavaProperties
+type Metadata = Properties
 
 getUUID :: Metadata -> Maybe String
 getUUID = Map.lookup "uuid"

@@ -5,8 +5,8 @@ import Data.Char (isLetter)
 import qualified Data.Map as Map
 import GenWords
 import Test.HUnit
-import Text.JavaProperties
-import Text.JavaProperties.XML
+import Text.Properties
+import Text.Properties.JavaXml
 import TmpDir
 import System.FilePath ((</>))
 
@@ -26,15 +26,15 @@ propTest = do
 
 xmlTest :: IO ()
 xmlTest = do
-   m1 <- xmlToJavaProperties sample
+   m1 <- javaXmlToProperties sample
    let mOrig = Map.fromList [
          ("_date", "1317421304162"),
          ("key", "value"),
          ("kind", "snapshot"),
          ("hash", "cb32d5ed1eb8ec56f7157b0b7fac4b656c8e62cc") ]
    m1 @?= mOrig
-   buf <- javaPropertiesToXml mOrig :: IO ByteString
-   m2 <- xmlToJavaProperties buf
+   buf <- propertiesToJavaXml mOrig :: IO ByteString
+   m2 <- javaXmlToProperties buf
    m2 @?= mOrig
 
 -- This is captured out of the output of the Scala implementation.
@@ -51,7 +51,7 @@ sample = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n\
 
 -- TODO: Test for, and support non-simple characters.
 
-testProps :: Int -> JavaProperties
+testProps :: Int -> Properties
 testProps count =
    Map.fromList $ map (\n -> (getWord n, makeString n n)) [1..count]
 
